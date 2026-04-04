@@ -1,0 +1,40 @@
+{
+  "count": 150,
+  "params": {
+    "name": "Lapin",
+    "type": "herbivore",
+    "color": [
+      0.9,
+      0.9,
+      0.8
+    ],
+    "temp_min": 5.0,
+    "temp_max": 35.0,
+    "humidity_min": 0.2,
+    "humidity_max": 0.8,
+    "altitude_min": 0.28,
+    "altitude_max": 0.75,
+    "reproduction_rate": 0.9,
+    "max_age": 1314000,
+    "max_population": 600,
+    "energy_start": 100.0,
+    "energy_consumption": 0.0464,
+    "energy_from_food": 65.0,
+    "speed": 1.2,
+    "perception_radius": 12.0,
+    "food_sources": [
+      "Herbe"
+    ],
+    "growth_rate": 0.0,
+    "dispersal_radius": 0,
+    "activity_pattern": "crepuscular",
+    "can_swim": false,
+    "reproduction_cooldown_length": 61200,
+    "litter_size_min": 3,
+    "litter_size_max": 8,
+    "sexual_maturity_ticks": 10000,
+    "gestation_ticks": 1000,
+    "juvenile_mortality_rate": 1.28e-05,
+    "fear_factor": 3.0
+  }
+}
