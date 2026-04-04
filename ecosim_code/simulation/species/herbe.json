@@ -1,0 +1,38 @@
+{
+  "count": 600,
+  "params": {
+    "name": "Herbe",
+    "type": "plant",
+    "color": [
+      0.2,
+      0.8,
+      0.1
+    ],
+    "temp_min": 5.0,
+    "temp_max": 28.0,
+    "humidity_min": 0.25,
+    "humidity_max": 1.0,
+    "altitude_min": 0.28,
+    "altitude_max": 0.78,
+    "reproduction_rate": 0.8,
+    "max_age": 876000,
+    "max_population": 10000,
+    "energy_start": 100.0,
+    "energy_consumption": 0.0,
+    "energy_from_food": 0.0,
+    "speed": 0.0,
+    "perception_radius": 0.0,
+    "food_sources": [],
+    "growth_rate": 3e-05,
+    "dispersal_radius": 6,
+    "activity_pattern": "diurnal",
+    "can_swim": false,
+    "reproduction_cooldown_length": 1200,
+    "litter_size_min": 1,
+    "litter_size_max": 4,
+    "sexual_maturity_ticks": 0,
+    "gestation_ticks": 0,
+    "juvenile_mortality_rate": 0.0,
+    "fear_factor": 0.0
+  }
+}
