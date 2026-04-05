@@ -1,5 +1,35 @@
 from dataclasses import dataclass, field
 from typing import List
+import random
+
+# Paramètres dont la valeur est tirée selon N(µ, σ) au démarrage de chaque simulation
+_VARIABLE_FLOAT = {
+    "reproduction_rate", "energy_start", "energy_consumption", "energy_from_food",
+    "speed", "perception_radius", "growth_rate", "juvenile_mortality_rate", "fear_factor",
+}
+_VARIABLE_INT = {
+    "max_age", "reproduction_cooldown_length", "sexual_maturity_ticks", "gestation_ticks",
+}
+
+
+def sample_params(params: dict) -> dict:
+    """
+    Tire les paramètres de l'espèce selon N(µ, σ) une seule fois par simulation.
+    Les clés «*_std» du dict définissent l'écart-type (0 = valeur fixe).
+    Retourne un dict propre (sans clés _std) prêt pour Species(**...).
+    """
+    result = {}
+    for key, val in params.items():
+        if key.endswith("_std"):
+            continue
+        std = params.get(f"{key}_std", 0.0) or 0.0
+        if std > 0 and key in _VARIABLE_FLOAT:
+            result[key] = max(0.0, random.gauss(val, std))
+        elif std > 0 and key in _VARIABLE_INT:
+            result[key] = max(0, round(random.gauss(val, std)))
+        else:
+            result[key] = val
+    return result
 
 @dataclass
 class Species:

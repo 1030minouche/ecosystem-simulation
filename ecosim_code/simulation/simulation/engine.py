@@ -1,7 +1,7 @@
 import random
 from world.grid import Grid
 from world.spatial_grid import SpatialGrid
-from entities.species import Species
+from entities.species import Species, sample_params
 from entities.animal import Individual
 from entities.plant import Plant
 from report import SimulationReport
@@ -33,7 +33,7 @@ class SimulationEngine:
         self._population_overrides = {k: max(0, int(v)) for k, v in counts.items()}
 
     def add_species(self, species_data: dict, count: int = 20):
-        sp = Species(**species_data)
+        sp = Species(**sample_params(species_data))
         self._default_counts[sp.name] = count
         self.species_list.append(sp)
 
