@@ -1,40 +1,18 @@
-ecosim_code/simulation/__pycache__/death_log.cpython-311.pyc
-ecosim_code/simulation/__pycache__/death_log.cpython-311.pyc
-ecosim_code/simulation/__pycache__/terrain_editor_gui.cpython-311.pyc
-ecosim_code/simulation/__pycache__/terrain_editor_gui.cpython-311.pyc
-ecosim_code/simulation/__pycache__/terrain_editor_gui.cpython-311.pyc
-ecosim_code/simulation/__pycache__/death_log.cpython-311.pyc
-ecosim_code/simulation/__pycache__/logger.cpython-311.pyc
-ecosim_code/simulation/__pycache__/report.cpython-311.pyc
-ecosim_code/simulation/__pycache__/terrain_editor_gui.cpython-311.pyc
-ecosim_code/simulation/__pycache__/viewer.cpython-311.pyc
-ecosim_code/simulation/entities/__pycache__/animal.cpython-311.pyc
-ecosim_code/simulation/entities/__pycache__/plant.cpython-311.pyc
-ecosim_code/simulation/entities/__pycache__/species.cpython-311.pyc
-ecosim_code/simulation/simulation/__pycache__/engine.cpython-311.pyc
-ecosim_code/simulation/world/__pycache__/cell.cpython-311.pyc
-ecosim_code/simulation/world/__pycache__/grid.cpython-311.pyc
-ecosim_code/simulation/world/__pycache__/spatial_grid.cpython-311.pyc
-ecosim_code/simulation/world/__pycache__/terrain.cpython-311.pyc
-ecosim_code/TODO.txt
-ecosim_code/simulation/logs/sim_20260405_112131.log
-ecosim_code/simulation/simulation/__pycache__/engine.cpython-311.pyc
-.claude/settings.local.json
-ecosim_code/simulation/reports/death_log.csv
-ecosim_code/simulation/tests/__pycache__/conftest.cpython-311-pytest-7.2.1.pyc
-ecosim_code/simulation/tests/__pycache__/helpers.cpython-311.pyc
-ecosim_code/simulation/tests/__pycache__/test_animal.cpython-311-pytest-7.2.1.pyc
-ecosim_code/simulation/tests/__pycache__/test_engine.cpython-311-pytest-7.2.1.pyc
-ecosim_code/simulation/tests/__pycache__/test_grid.cpython-311-pytest-7.2.1.pyc
-ecosim_code/simulation/tests/__pycache__/test_plant.cpython-311-pytest-7.2.1.pyc
-ecosim_code/simulation/tests/__pycache__/test_species.cpython-311-pytest-7.2.1.pyc
-ecosim_code/simulation/entities/__pycache__/species.cpython-311.pyc
-ecosim_code/simulation/logs/sim_20260405_112816.log
-ecosim_code/simulation/logs/sim_20260405_112903.log
-logs/sim_20260405_112916.log
-logs/sim_20260405_112917.log
-reports/death_log.csv
-*.pyc
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+
+# ── Logs de simulation ────────────────────────────────────────────────────────
+logs/
 *.log
-ecosim_code/simulation/entities/__pycache__/animal.cpython-311.pyc
-ecosim_code/simulation/entities/__pycache__/species.cpython-311.pyc
+ecosim_code/simulation/logs/
+
+# ── Rapports de simulation ────────────────────────────────────────────────────
+reports/
+*.csv
+ecosim_code/simulation/reports/
+
+# ── Divers ────────────────────────────────────────────────────────────────────
+ecosim_code/TODO.txt
+.claude/settings.local.json
