@@ -19,17 +19,14 @@ class SimulationLogger:
     def log(self, tick: int, plants: list, individuals: list):
         """Appelé périodiquement (pas à chaque tick)."""
         counts = {}
-
         for p in plants:
             counts[p.species.name] = counts.get(p.species.name, 0) + 1
         for i in individuals:
             counts[i.species.name] = counts.get(i.species.name, 0) + 1
-
         total = sum(counts.values())
         line = f"[Tick {tick:>6}] total={total:>5} │ "
         line += "  ".join(f"{name}: {count:>4}" for name, count in sorted(counts.items()))
         self.file.write(line + "\n")
-        # Pas de flush() ici — le buffer OS gère l'écriture en arrière-plan
 
     def log_event(self, tick: int, message: str):
         """Pour les événements importants — extinction, explosion, reset."""
