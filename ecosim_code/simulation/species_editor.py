@@ -38,26 +38,26 @@ DEFAULTS: dict = {
         "temp_min": 0.0,    "temp_max": 40.0,
         "humidity_min": 0.0, "humidity_max": 1.0,
         "altitude_min": 0.3, "altitude_max": 0.75,
-        "growth_rate": 0.0,
-        "max_age": 438_000,
-        "reproduction_rate": 0.8,
+        "growth_rate": 0.0,             "growth_rate_std": 0.0,
+        "max_age": 438_000,             "max_age_std": 0,
+        "reproduction_rate": 0.8,       "reproduction_rate_std": 0.0,
         "max_population": 200,
-        "energy_start": 100.0,
-        "energy_consumption": 0.05,
-        "energy_from_food": 50.0,
-        "speed": 1.0,
-        "perception_radius": 8.0,
+        "energy_start": 100.0,          "energy_start_std": 0.0,
+        "energy_consumption": 0.05,     "energy_consumption_std": 0.0,
+        "energy_from_food": 50.0,       "energy_from_food_std": 0.0,
+        "speed": 1.0,                   "speed_std": 0.0,
+        "perception_radius": 8.0,       "perception_radius_std": 0.0,
         "food_sources": [],
         "dispersal_radius": 0,
         "activity_pattern": "diurnal",
         "can_swim": False,
-        "reproduction_cooldown_length": 60_000,
+        "reproduction_cooldown_length": 60_000, "reproduction_cooldown_length_std": 0,
         "litter_size_min": 1,
         "litter_size_max": 3,
-        "sexual_maturity_ticks": 0,
-        "gestation_ticks": 0,
-        "juvenile_mortality_rate": 0.0,
-        "fear_factor": 0.0,
+        "sexual_maturity_ticks": 0,     "sexual_maturity_ticks_std": 0,
+        "gestation_ticks": 0,           "gestation_ticks_std": 0,
+        "juvenile_mortality_rate": 0.0, "juvenile_mortality_rate_std": 0.0,
+        "fear_factor": 0.0,             "fear_factor_std": 0.0,
     },
 }
 
@@ -234,26 +234,36 @@ class SpeciesEditor:
             return f
 
         def field_row(parent, label: str, var: tk.Variable,
-                      width: int = 14, hint: str = "") -> ttk.Entry:
-            """Ligne label + Entry [+ hint en muted]."""
+                      width: int = 14, hint: str = "",
+                      v_std: tk.Variable = None) -> ttk.Entry:
+            """Ligne label + Entry [± σ] [+ hint en muted]."""
             row = tk.Frame(parent, bg=C["base"])
             row.pack(fill=tk.X, padx=10, pady=2)
             _label(row, label, width=26, anchor="e").pack(side=tk.LEFT, padx=(0, 6))
             e = ttk.Entry(row, textvariable=var, width=width)
             e.pack(side=tk.LEFT)
+            if v_std is not None:
+                _label(row, "± σ", fg=C["muted"],
+                       font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(6, 2))
+                ttk.Entry(row, textvariable=v_std, width=10).pack(side=tk.LEFT)
             if hint:
                 _label(row, hint, fg=C["muted"],
                        font=("Segoe UI", 8, "italic")).pack(side=tk.LEFT, padx=(6, 0))
             return e
 
-        def tick_row(parent, label: str, var: tk.StringVar, width: int = 14, hint: str = "") -> None:
-            """Ligne avec Entry ticks + label de conversion auto."""
+        def tick_row(parent, label: str, var: tk.StringVar, width: int = 14, hint: str = "",
+                     v_std: tk.Variable = None) -> None:
+            """Ligne avec Entry ticks + label de conversion auto [± σ]."""
             row = tk.Frame(parent, bg=C["base"])
             row.pack(fill=tk.X, padx=10, pady=2)
             _label(row, label, width=26, anchor="e").pack(side=tk.LEFT, padx=(0, 6))
             ttk.Entry(row, textvariable=var, width=width).pack(side=tk.LEFT)
             conv = _label(row, "", fg=C["muted"], font=("Segoe UI", 8, "italic"))
             conv.pack(side=tk.LEFT, padx=(6, 0))
+            if v_std is not None:
+                _label(row, "± σ", fg=C["muted"],
+                       font=("Segoe UI", 8)).pack(side=tk.LEFT, padx=(8, 2))
+                ttk.Entry(row, textvariable=v_std, width=10).pack(side=tk.LEFT)
             if hint:
                 _label(row, hint, fg=C["muted"], font=("Segoe UI", 8, "italic")).pack(side=tk.LEFT, padx=(8, 0))
 
@@ -315,52 +325,64 @@ class SpeciesEditor:
 
         # ── Population de base ────────────────────────────────────────────────
         sec_pop = section("Population")
-        self.v_count      = tk.StringVar()
-        self.v_max_pop    = tk.StringVar()
-        self.v_max_age    = tk.StringVar()
-        self.v_repro_rate = tk.StringVar()
+        self.v_count          = tk.StringVar()
+        self.v_max_pop        = tk.StringVar()
+        self.v_max_age        = tk.StringVar()
+        self.v_max_age_std    = tk.StringVar()
+        self.v_repro_rate     = tk.StringVar()
+        self.v_repro_rate_std = tk.StringVar()
         field_row(sec_pop, "Count initial",            self.v_count)
         field_row(sec_pop, "Population max",           self.v_max_pop)
-        tick_row (sec_pop, "Âge max (ticks)",          self.v_max_age)
-        field_row(sec_pop, "Taux reproduction [0–1]",  self.v_repro_rate)
+        tick_row (sec_pop, "Âge max (ticks)",          self.v_max_age,    v_std=self.v_max_age_std)
+        field_row(sec_pop, "Taux reproduction [0–1]",  self.v_repro_rate, v_std=self.v_repro_rate_std)
         tk.Frame(sec_pop, bg=C["base"], height=4).pack()
 
         # ── Reproduction biologique avancée ───────────────────────────────────
         self.sec_repro = section("Reproduction biologique")
-        self.v_repro_cd        = tk.StringVar()
-        self.v_litter_min      = tk.StringVar()
-        self.v_litter_max      = tk.StringVar()
-        self.v_sexual_maturity = tk.StringVar()
-        self.v_gestation       = tk.StringVar()
+        self.v_repro_cd             = tk.StringVar()
+        self.v_repro_cd_std         = tk.StringVar()
+        self.v_litter_min           = tk.StringVar()
+        self.v_litter_max           = tk.StringVar()
+        self.v_sexual_maturity      = tk.StringVar()
+        self.v_sexual_maturity_std  = tk.StringVar()
+        self.v_gestation            = tk.StringVar()
+        self.v_gestation_std        = tk.StringVar()
 
         tick_row (self.sec_repro, "Cooldown repro (ticks)",   self.v_repro_cd,
-                  hint="après la naissance")
+                  hint="après la naissance", v_std=self.v_repro_cd_std)
         range_row(self.sec_repro, "Taille portée (min → max)",
                   self.v_litter_min, self.v_litter_max)
-        tick_row (self.sec_repro, "Maturité sexuelle (ticks)", self.v_sexual_maturity)
-        tick_row (self.sec_repro, "Gestation (ticks)",         self.v_gestation)
+        tick_row (self.sec_repro, "Maturité sexuelle (ticks)", self.v_sexual_maturity,
+                  v_std=self.v_sexual_maturity_std)
+        tick_row (self.sec_repro, "Gestation (ticks)",         self.v_gestation,
+                  v_std=self.v_gestation_std)
         tk.Frame(self.sec_repro, bg=C["base"], height=4).pack()
 
         # ── Mortalité ─────────────────────────────────────────────────────────
         self.sec_mortalite = section("Mortalité")
-        self.v_juv_mort   = tk.StringVar()
-        self.v_fear_factor = tk.StringVar()
+        self.v_juv_mort        = tk.StringVar()
+        self.v_juv_mort_std    = tk.StringVar()
+        self.v_fear_factor     = tk.StringVar()
+        self.v_fear_factor_std = tk.StringVar()
         field_row(self.sec_mortalite, "Mortalité juvénile/tick",
-                  self.v_juv_mort,
+                  self.v_juv_mort, v_std=self.v_juv_mort_std,
                   hint="(ex : 1.28e-5 → 75% meurent avant maturité)")
         field_row(self.sec_mortalite, "Facteur de peur",
-                  self.v_fear_factor,
+                  self.v_fear_factor, v_std=self.v_fear_factor_std,
                   hint="(0 = aucun | 3 = fort | formule : rate÷(1+k·n_pred))")
         tk.Frame(self.sec_mortalite, bg=C["base"], height=4).pack()
 
         # ── Énergie ───────────────────────────────────────────────────────────
         sec_nrj = section("Énergie")
-        self.v_nrj_start = tk.StringVar()
-        self.v_nrj_conso = tk.StringVar()
-        self.v_nrj_food  = tk.StringVar()
-        field_row(sec_nrj, "Énergie de départ",  self.v_nrj_start)
-        field_row(sec_nrj, "Consommation/tick",  self.v_nrj_conso)
-        field_row(sec_nrj, "Gain par repas",     self.v_nrj_food)
+        self.v_nrj_start     = tk.StringVar()
+        self.v_nrj_start_std = tk.StringVar()
+        self.v_nrj_conso     = tk.StringVar()
+        self.v_nrj_conso_std = tk.StringVar()
+        self.v_nrj_food      = tk.StringVar()
+        self.v_nrj_food_std  = tk.StringVar()
+        field_row(sec_nrj, "Énergie de départ",  self.v_nrj_start, v_std=self.v_nrj_start_std)
+        field_row(sec_nrj, "Consommation/tick",  self.v_nrj_conso, v_std=self.v_nrj_conso_std)
+        field_row(sec_nrj, "Gain par repas",     self.v_nrj_food,  v_std=self.v_nrj_food_std)
         tk.Frame(sec_nrj, bg=C["base"], height=4).pack()
 
         # ── Survie environnementale ───────────────────────────────────────────
@@ -375,10 +397,12 @@ class SpeciesEditor:
 
         # ── Section animaux ───────────────────────────────────────────────────
         self.sec_animal = section("Comportement — Animaux")
-        self.v_speed      = tk.StringVar()
-        self.v_perception = tk.StringVar()
-        field_row(self.sec_animal, "Vitesse",          self.v_speed)
-        field_row(self.sec_animal, "Rayon perception", self.v_perception)
+        self.v_speed          = tk.StringVar()
+        self.v_speed_std      = tk.StringVar()
+        self.v_perception     = tk.StringVar()
+        self.v_perception_std = tk.StringVar()
+        field_row(self.sec_animal, "Vitesse",          self.v_speed,      v_std=self.v_speed_std)
+        field_row(self.sec_animal, "Rayon perception", self.v_perception, v_std=self.v_perception_std)
 
         # Sources de nourriture
         fs_row = tk.Frame(self.sec_animal, bg=C["base"])
@@ -427,10 +451,12 @@ class SpeciesEditor:
 
         # ── Section plantes ───────────────────────────────────────────────────
         self.sec_plant = section("Comportement — Plantes")
-        self.v_growth_rate   = tk.StringVar()
-        self.v_dispersal_rad = tk.StringVar()
+        self.v_growth_rate     = tk.StringVar()
+        self.v_growth_rate_std = tk.StringVar()
+        self.v_dispersal_rad   = tk.StringVar()
         field_row(self.sec_plant, "Taux croissance/tick",
-                  self.v_growth_rate,  hint="(ex : 0.000025 ≈ 3%/j sim)")
+                  self.v_growth_rate, v_std=self.v_growth_rate_std,
+                  hint="(ex : 0.000025 ≈ 3%/j sim)")
         field_row(self.sec_plant, "Rayon dispersion",    self.v_dispersal_rad)
         tk.Frame(self.sec_plant, bg=C["base"], height=4).pack()
 
@@ -504,22 +530,32 @@ class SpeciesEditor:
         self.v_cg.set(str(round(c[1], 4)))
         self.v_cb.set(str(round(c[2], 4)))
 
-        self.v_count.set(     str(data.get("count", 50)))
-        self.v_max_pop.set(   str(p.get("max_population",             200)))
-        self.v_max_age.set(   str(p.get("max_age",               438_000)))
-        self.v_repro_rate.set(str(p.get("reproduction_rate",            0.8)))
+        self.v_count.set(          str(data.get("count", 50)))
+        self.v_max_pop.set(        str(p.get("max_population",           200)))
+        self.v_max_age.set(        str(p.get("max_age",             438_000)))
+        self.v_max_age_std.set(    str(p.get("max_age_std",               0)))
+        self.v_repro_rate.set(     str(p.get("reproduction_rate",         0.8)))
+        self.v_repro_rate_std.set( str(p.get("reproduction_rate_std",     0.0)))
 
-        self.v_repro_cd.set(       str(p.get("reproduction_cooldown_length", 60_000)))
-        self.v_litter_min.set(     str(p.get("litter_size_min",              1)))
-        self.v_litter_max.set(     str(p.get("litter_size_max",              1)))
-        self.v_sexual_maturity.set(str(p.get("sexual_maturity_ticks",        0)))
-        self.v_gestation.set(      str(p.get("gestation_ticks",              0)))
-        self.v_juv_mort.set(       str(p.get("juvenile_mortality_rate",      0.0)))
-        self.v_fear_factor.set(    str(p.get("fear_factor",                  0.0)))
+        self.v_repro_cd.set(            str(p.get("reproduction_cooldown_length",      60_000)))
+        self.v_repro_cd_std.set(        str(p.get("reproduction_cooldown_length_std",  0)))
+        self.v_litter_min.set(          str(p.get("litter_size_min",                  1)))
+        self.v_litter_max.set(          str(p.get("litter_size_max",                  1)))
+        self.v_sexual_maturity.set(     str(p.get("sexual_maturity_ticks",             0)))
+        self.v_sexual_maturity_std.set( str(p.get("sexual_maturity_ticks_std",         0)))
+        self.v_gestation.set(           str(p.get("gestation_ticks",                  0)))
+        self.v_gestation_std.set(       str(p.get("gestation_ticks_std",               0)))
+        self.v_juv_mort.set(            str(p.get("juvenile_mortality_rate",           0.0)))
+        self.v_juv_mort_std.set(        str(p.get("juvenile_mortality_rate_std",       0.0)))
+        self.v_fear_factor.set(         str(p.get("fear_factor",                       0.0)))
+        self.v_fear_factor_std.set(     str(p.get("fear_factor_std",                   0.0)))
 
-        self.v_nrj_start.set(str(p.get("energy_start",       100.0)))
-        self.v_nrj_conso.set(str(p.get("energy_consumption",   0.05)))
-        self.v_nrj_food.set( str(p.get("energy_from_food",    50.0)))
+        self.v_nrj_start.set(    str(p.get("energy_start",          100.0)))
+        self.v_nrj_start_std.set(str(p.get("energy_start_std",        0.0)))
+        self.v_nrj_conso.set(    str(p.get("energy_consumption",      0.05)))
+        self.v_nrj_conso_std.set(str(p.get("energy_consumption_std",  0.0)))
+        self.v_nrj_food.set(     str(p.get("energy_from_food",       50.0)))
+        self.v_nrj_food_std.set( str(p.get("energy_from_food_std",    0.0)))
 
         self.v_temp_min.set(str(p.get("temp_min",     0.0)))
         self.v_temp_max.set(str(p.get("temp_max",    40.0)))
@@ -528,8 +564,10 @@ class SpeciesEditor:
         self.v_alt_min.set( str(p.get("altitude_min", 0.3)))
         self.v_alt_max.set( str(p.get("altitude_max", 0.75)))
 
-        self.v_speed.set(      str(p.get("speed",             1.0)))
-        self.v_perception.set( str(p.get("perception_radius", 8.0)))
+        self.v_speed.set(          str(p.get("speed",                1.0)))
+        self.v_speed_std.set(      str(p.get("speed_std",             0.0)))
+        self.v_perception.set(     str(p.get("perception_radius",     8.0)))
+        self.v_perception_std.set( str(p.get("perception_radius_std", 0.0)))
 
         # activity_pattern — compat ascendante avec l'ancien champ nocturnal
         if "activity_pattern" in p:
@@ -546,8 +584,9 @@ class SpeciesEditor:
         for src in p.get("food_sources", []):
             self.food_lb.insert(tk.END, src)
 
-        self.v_growth_rate.set(  str(p.get("growth_rate",      0.0)))
-        self.v_dispersal_rad.set(str(p.get("dispersal_radius", 0)))
+        self.v_growth_rate.set(     str(p.get("growth_rate",      0.0)))
+        self.v_growth_rate_std.set( str(p.get("growth_rate_std",  0.0)))
+        self.v_dispersal_rad.set(   str(p.get("dispersal_radius",   0)))
 
         self._on_type_changed()
         self._set_status(f"Chargé : {stem}.json")
@@ -638,35 +677,48 @@ class SpeciesEditor:
         return {
             "count": i(self.v_count),
             "params": {
-                "name":                         self.v_name.get().strip(),
-                "type":                         self.v_type.get(),
-                "color":                        [f(self.v_cr), f(self.v_cg), f(self.v_cb)],
-                "temp_min":                     f(self.v_temp_min),
-                "temp_max":                     f(self.v_temp_max),
-                "humidity_min":                 f(self.v_hum_min),
-                "humidity_max":                 f(self.v_hum_max),
-                "altitude_min":                 f(self.v_alt_min),
-                "altitude_max":                 f(self.v_alt_max),
-                "reproduction_rate":            f(self.v_repro_rate),
-                "max_age":                      i(self.v_max_age),
-                "max_population":               i(self.v_max_pop),
-                "energy_start":                 f(self.v_nrj_start),
-                "energy_consumption":           f(self.v_nrj_conso),
-                "energy_from_food":             f(self.v_nrj_food),
-                "speed":                        f(self.v_speed),
-                "perception_radius":            f(self.v_perception),
-                "food_sources":                 list(self.food_lb.get(0, tk.END)),
-                "growth_rate":                  f(self.v_growth_rate),
-                "dispersal_radius":             i(self.v_dispersal_rad),
-                "activity_pattern":             self.v_activity.get(),
-                "can_swim":                     self.v_can_swim.get(),
-                "reproduction_cooldown_length": i(self.v_repro_cd),
-                "litter_size_min":              i(self.v_litter_min),
-                "litter_size_max":              i(self.v_litter_max),
-                "sexual_maturity_ticks":        i(self.v_sexual_maturity),
-                "gestation_ticks":              i(self.v_gestation),
-                "juvenile_mortality_rate":      f(self.v_juv_mort),
-                "fear_factor":                  f(self.v_fear_factor),
+                "name":                              self.v_name.get().strip(),
+                "type":                              self.v_type.get(),
+                "color":                             [f(self.v_cr), f(self.v_cg), f(self.v_cb)],
+                "temp_min":                          f(self.v_temp_min),
+                "temp_max":                          f(self.v_temp_max),
+                "humidity_min":                      f(self.v_hum_min),
+                "humidity_max":                      f(self.v_hum_max),
+                "altitude_min":                      f(self.v_alt_min),
+                "altitude_max":                      f(self.v_alt_max),
+                "reproduction_rate":                 f(self.v_repro_rate),
+                "reproduction_rate_std":             f(self.v_repro_rate_std),
+                "max_age":                           i(self.v_max_age),
+                "max_age_std":                       i(self.v_max_age_std),
+                "max_population":                    i(self.v_max_pop),
+                "energy_start":                      f(self.v_nrj_start),
+                "energy_start_std":                  f(self.v_nrj_start_std),
+                "energy_consumption":                f(self.v_nrj_conso),
+                "energy_consumption_std":            f(self.v_nrj_conso_std),
+                "energy_from_food":                  f(self.v_nrj_food),
+                "energy_from_food_std":              f(self.v_nrj_food_std),
+                "speed":                             f(self.v_speed),
+                "speed_std":                         f(self.v_speed_std),
+                "perception_radius":                 f(self.v_perception),
+                "perception_radius_std":             f(self.v_perception_std),
+                "food_sources":                      list(self.food_lb.get(0, tk.END)),
+                "growth_rate":                       f(self.v_growth_rate),
+                "growth_rate_std":                   f(self.v_growth_rate_std),
+                "dispersal_radius":                  i(self.v_dispersal_rad),
+                "activity_pattern":                  self.v_activity.get(),
+                "can_swim":                          self.v_can_swim.get(),
+                "reproduction_cooldown_length":      i(self.v_repro_cd),
+                "reproduction_cooldown_length_std":  i(self.v_repro_cd_std),
+                "litter_size_min":                   i(self.v_litter_min),
+                "litter_size_max":                   i(self.v_litter_max),
+                "sexual_maturity_ticks":             i(self.v_sexual_maturity),
+                "sexual_maturity_ticks_std":         i(self.v_sexual_maturity_std),
+                "gestation_ticks":                   i(self.v_gestation),
+                "gestation_ticks_std":               i(self.v_gestation_std),
+                "juvenile_mortality_rate":           f(self.v_juv_mort),
+                "juvenile_mortality_rate_std":       f(self.v_juv_mort_std),
+                "fear_factor":                       f(self.v_fear_factor),
+                "fear_factor_std":                   f(self.v_fear_factor_std),
             },
         }
 
@@ -697,33 +749,46 @@ class SpeciesEditor:
             except ValueError:
                 errors.append(f"• {label} : entier attendu")
 
-        chk_float(self.v_cr,           "Rouge",                  0.0, 1.0)
-        chk_float(self.v_cg,           "Vert",                   0.0, 1.0)
-        chk_float(self.v_cb,           "Bleu",                   0.0, 1.0)
-        chk_float(self.v_temp_min,     "Temp min")
-        chk_float(self.v_temp_max,     "Temp max")
-        chk_float(self.v_hum_min,      "Humidité min",           0.0, 1.0)
-        chk_float(self.v_hum_max,      "Humidité max",           0.0, 1.0)
-        chk_float(self.v_alt_min,      "Altitude min",           0.0, 1.0)
-        chk_float(self.v_alt_max,      "Altitude max",           0.0, 1.0)
-        chk_float(self.v_repro_rate,   "Taux reproduction",      0.0, 1.0)
-        chk_float(self.v_nrj_start,    "Énergie départ",         1.0)
-        chk_float(self.v_nrj_conso,    "Consommation",           0.0)
-        chk_float(self.v_nrj_food,     "Gain repas",             0.0)
-        chk_float(self.v_speed,        "Vitesse",                0.0)
-        chk_float(self.v_perception,   "Rayon perception",       0.0)
-        chk_float(self.v_growth_rate,  "Taux croissance",        0.0)
-        chk_float(self.v_juv_mort,     "Mortalité juvénile",     0.0, 1.0)
-        chk_float(self.v_fear_factor,  "Facteur de peur",        0.0)
-        chk_int(self.v_count,          "Count initial",           0)
-        chk_int(self.v_max_pop,        "Population max",          1)
-        chk_int(self.v_max_age,        "Âge max",                 1)
-        chk_int(self.v_repro_cd,       "Cooldown repro",          0)
-        chk_int(self.v_litter_min,     "Portée min",              1)
-        chk_int(self.v_litter_max,     "Portée max",              1)
-        chk_int(self.v_sexual_maturity,"Maturité sexuelle",       0)
-        chk_int(self.v_gestation,      "Gestation",               0)
-        chk_int(self.v_dispersal_rad,  "Rayon dispersion",        0)
+        chk_float(self.v_cr,                   "Rouge",                      0.0, 1.0)
+        chk_float(self.v_cg,                   "Vert",                       0.0, 1.0)
+        chk_float(self.v_cb,                   "Bleu",                       0.0, 1.0)
+        chk_float(self.v_temp_min,             "Temp min")
+        chk_float(self.v_temp_max,             "Temp max")
+        chk_float(self.v_hum_min,              "Humidité min",               0.0, 1.0)
+        chk_float(self.v_hum_max,              "Humidité max",               0.0, 1.0)
+        chk_float(self.v_alt_min,              "Altitude min",               0.0, 1.0)
+        chk_float(self.v_alt_max,              "Altitude max",               0.0, 1.0)
+        chk_float(self.v_repro_rate,           "Taux reproduction",          0.0, 1.0)
+        chk_float(self.v_repro_rate_std,       "σ Taux reproduction",        0.0)
+        chk_float(self.v_nrj_start,            "Énergie départ",             1.0)
+        chk_float(self.v_nrj_start_std,        "σ Énergie départ",           0.0)
+        chk_float(self.v_nrj_conso,            "Consommation",               0.0)
+        chk_float(self.v_nrj_conso_std,        "σ Consommation",             0.0)
+        chk_float(self.v_nrj_food,             "Gain repas",                 0.0)
+        chk_float(self.v_nrj_food_std,         "σ Gain repas",               0.0)
+        chk_float(self.v_speed,                "Vitesse",                    0.0)
+        chk_float(self.v_speed_std,            "σ Vitesse",                  0.0)
+        chk_float(self.v_perception,           "Rayon perception",           0.0)
+        chk_float(self.v_perception_std,       "σ Rayon perception",         0.0)
+        chk_float(self.v_growth_rate,          "Taux croissance",            0.0)
+        chk_float(self.v_growth_rate_std,      "σ Taux croissance",          0.0)
+        chk_float(self.v_juv_mort,             "Mortalité juvénile",         0.0, 1.0)
+        chk_float(self.v_juv_mort_std,         "σ Mortalité juvénile",       0.0)
+        chk_float(self.v_fear_factor,          "Facteur de peur",            0.0)
+        chk_float(self.v_fear_factor_std,      "σ Facteur de peur",          0.0)
+        chk_int(self.v_count,                  "Count initial",               0)
+        chk_int(self.v_max_pop,                "Population max",              1)
+        chk_int(self.v_max_age,                "Âge max",                     1)
+        chk_int(self.v_max_age_std,            "σ Âge max",                   0)
+        chk_int(self.v_repro_cd,               "Cooldown repro",              0)
+        chk_int(self.v_repro_cd_std,           "σ Cooldown repro",            0)
+        chk_int(self.v_litter_min,             "Portée min",                  1)
+        chk_int(self.v_litter_max,             "Portée max",                  1)
+        chk_int(self.v_sexual_maturity,        "Maturité sexuelle",           0)
+        chk_int(self.v_sexual_maturity_std,    "σ Maturité sexuelle",         0)
+        chk_int(self.v_gestation,              "Gestation",                   0)
+        chk_int(self.v_gestation_std,          "σ Gestation",                 0)
+        chk_int(self.v_dispersal_rad,          "Rayon dispersion",            0)
 
         try:
             if int(self.v_litter_min.get()) > int(self.v_litter_max.get()):
@@ -784,14 +849,24 @@ class SpeciesEditor:
 
     def _clear_form(self) -> None:
         for v in (self.v_name, self.v_cr, self.v_cg, self.v_cb,
-                  self.v_count, self.v_max_pop, self.v_max_age, self.v_repro_rate,
-                  self.v_repro_cd, self.v_litter_min, self.v_litter_max,
-                  self.v_sexual_maturity, self.v_gestation,
-                  self.v_juv_mort, self.v_fear_factor,
-                  self.v_nrj_start, self.v_nrj_conso, self.v_nrj_food,
+                  self.v_count, self.v_max_pop,
+                  self.v_max_age, self.v_max_age_std,
+                  self.v_repro_rate, self.v_repro_rate_std,
+                  self.v_repro_cd, self.v_repro_cd_std,
+                  self.v_litter_min, self.v_litter_max,
+                  self.v_sexual_maturity, self.v_sexual_maturity_std,
+                  self.v_gestation, self.v_gestation_std,
+                  self.v_juv_mort, self.v_juv_mort_std,
+                  self.v_fear_factor, self.v_fear_factor_std,
+                  self.v_nrj_start, self.v_nrj_start_std,
+                  self.v_nrj_conso, self.v_nrj_conso_std,
+                  self.v_nrj_food, self.v_nrj_food_std,
                   self.v_temp_min, self.v_temp_max, self.v_hum_min, self.v_hum_max,
-                  self.v_alt_min, self.v_alt_max, self.v_speed, self.v_perception,
-                  self.v_growth_rate, self.v_dispersal_rad, self.v_food_input):
+                  self.v_alt_min, self.v_alt_max,
+                  self.v_speed, self.v_speed_std,
+                  self.v_perception, self.v_perception_std,
+                  self.v_growth_rate, self.v_growth_rate_std,
+                  self.v_dispersal_rad, self.v_food_input):
             v.set("")
         self.v_activity.set("diurnal")
         self.v_can_swim.set(False)
