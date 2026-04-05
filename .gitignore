@@ -34,3 +34,4 @@ ecosim_code/simulation/logs/sim_20260405_112903.log
 logs/sim_20260405_112916.log
 logs/sim_20260405_112917.log
 reports/death_log.csv
+*.pyc
