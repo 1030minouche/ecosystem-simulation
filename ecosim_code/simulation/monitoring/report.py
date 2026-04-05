@@ -11,7 +11,7 @@ class SimulationReport:
         self.species_stats = {}    # stats par espèce
 
     def record(self, tick: int, plants: list, individuals: list):
-        """Appelé toutes les 50 ticks pour enregistrer l'état."""
+        """Appelé toutes les 500 ticks pour enregistrer l'état."""
         snapshot = {"tick": tick, "populations": {}}
 
         all_entities = [(p.species.name, "plant", p.energy, p.growth) for p in plants] + \
@@ -40,7 +40,6 @@ class SimulationReport:
             d.pop("total_energy")
             snapshot["populations"][name] = d
 
-            # Init stats globales
             if name not in self.species_stats:
                 self.species_stats[name] = {
                     "peak_population": 0,
@@ -94,7 +93,6 @@ class SimulationReport:
         })
         ticks = [s["tick"] for s in self.history]
 
-        # Couleurs par type d'espèce
         type_colors = {"plant": "#4caf50", "herbivore": "#90caf9", "carnivore": "#ef9a9a"}
         type_map = {}
         for snap in self.history:
@@ -123,7 +121,6 @@ class SimulationReport:
         end_time = datetime.now()
         duration = (end_time - self.start_time).seconds
 
-        # Populations finales
         final_populations = {}
         for p in plants:
             final_populations[p.species.name] = final_populations.get(p.species.name, 0) + 1
@@ -140,7 +137,6 @@ class SimulationReport:
                     shannon -= p * math.log(p)
         shannon = round(shannon, 4)
 
-        # Construction du rapport
         report = {
             "meta": {
                 "date": self.start_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -162,17 +158,14 @@ class SimulationReport:
             "population_history": self.history,
         }
 
-        # Sauvegarde
         os.makedirs("reports", exist_ok=True)
         base     = f"reports/rapport_{self.start_time.strftime('%Y%m%d_%H%M%S')}"
         filename = base + ".json"
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
 
-        # Graphiques
         self._generate_charts(base)
 
-        # Résumé texte
         txt = base + ".txt"
         with open(txt, "w", encoding="utf-8") as f:
             f.write("=" * 60 + "\n")
@@ -204,22 +197,15 @@ class SimulationReport:
             for ev in self.events:
                 f.write(f"  [Tick {ev['tick']:5}] {ev['type']} — {ev.get('species', ev.get('details', ''))}\n")
 
-            # Tableau d'évolution dans le temps
             f.write(f"\n── ÉVOLUTION DES POPULATIONS DANS LE TEMPS ──\n\n")
-
-            # Récupère tous les noms d'espèces
             all_species = sorted(set(
                 name
                 for snapshot in self.history
                 for name in snapshot["populations"].keys()
             ))
-
-            # En-tête du tableau
             header = f"{'Tick':>8} │ " + " │ ".join(f"{sp:>12}" for sp in all_species)
             f.write(header + "\n")
             f.write("─" * len(header) + "\n")
-
-            # Lignes du tableau
             for snapshot in self.history:
                 row = f"{snapshot['tick']:>8} │ "
                 row += " │ ".join(
@@ -230,7 +216,6 @@ class SimulationReport:
 
             f.write("\n" + "=" * 60 + "\n")
 
-
-            print(f"📊 Rapport généré : {filename}")
-            print(f"📄 Résumé texte   : {txt}")
-            return filename
+        print(f"📊 Rapport généré : {filename}")
+        print(f"📄 Résumé texte   : {txt}")
+        return filename
