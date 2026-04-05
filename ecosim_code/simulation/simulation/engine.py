@@ -4,9 +4,9 @@ from world.spatial_grid import SpatialGrid
 from entities.species import Species, sample_params
 from entities.animal import Individual
 from entities.plant import Plant
-from report import SimulationReport
-from logger import SimulationLogger
-from death_log import DeathLogger
+from monitoring.report import SimulationReport
+from monitoring.logger import SimulationLogger
+from monitoring.death_log import DeathLogger
 
 DAY_LENGTH = 1_200        # ticks par jour simulé  (20 ticks/s × 60 s = 1 min réelle)
 SIM_YEAR   = 438_000     # ticks par an (365 × 1 200)

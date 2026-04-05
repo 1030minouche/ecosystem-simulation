@@ -14,7 +14,7 @@ from tkinter import ttk
 from typing import Optional
 
 # ── Chemin vers le dossier espèces ────────────────────────────────────────────
-SPECIES_DIR = Path(__file__).parent / "species"
+SPECIES_DIR = Path(__file__).parent.parent / "species"
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 TYPES            = ["plant", "herbivore", "carnivore", "omnivore"]

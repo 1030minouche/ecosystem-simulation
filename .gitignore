@@ -35,3 +35,6 @@ logs/sim_20260405_112916.log
 logs/sim_20260405_112917.log
 reports/death_log.csv
 *.pyc
+*.log
+ecosim_code/simulation/entities/__pycache__/animal.cpython-311.pyc
+ecosim_code/simulation/entities/__pycache__/species.cpython-311.pyc
