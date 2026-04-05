@@ -30,7 +30,7 @@ print("  EcoSim — Éditeur de terrain")
 print("  Configurez le terrain puis cliquez Confirmer.")
 print("=" * 60)
 
-from terrain_editor_gui import TerrainEditorGUI
+from gui.terrain_editor import TerrainEditorGUI
 
 def _noop(_=None): pass
 
@@ -53,5 +53,5 @@ threading.Thread(target=_sim_loop, daemon=True).start()
 
 # ── Viewer 2D (thread principal tkinter) ─────────────────────────────────────
 
-from viewer import SimViewer
+from gui.viewer import SimViewer
 SimViewer(engine).run()

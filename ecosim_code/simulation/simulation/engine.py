@@ -1,12 +1,12 @@
 import random
 from world.grid import Grid
 from world.spatial_grid import SpatialGrid
-from entities.species import Species
+from entities.species import Species, sample_params
 from entities.animal import Individual
 from entities.plant import Plant
-from report import SimulationReport
-from logger import SimulationLogger
-from death_log import DeathLogger
+from monitoring.report import SimulationReport
+from monitoring.logger import SimulationLogger
+from monitoring.death_log import DeathLogger
 
 DAY_LENGTH = 1_200        # ticks par jour simulé  (20 ticks/s × 60 s = 1 min réelle)
 SIM_YEAR   = 438_000     # ticks par an (365 × 1 200)
@@ -33,7 +33,7 @@ class SimulationEngine:
         self._population_overrides = {k: max(0, int(v)) for k, v in counts.items()}
 
     def add_species(self, species_data: dict, count: int = 20):
-        sp = Species(**species_data)
+        sp = Species(**sample_params(species_data))
         self._default_counts[sp.name] = count
         self.species_list.append(sp)
 
