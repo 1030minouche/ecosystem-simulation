@@ -19,3 +19,6 @@ reports/
 
 # Claude
 .claude/settings.local.json
+
+# Divers
+TODO.txt
