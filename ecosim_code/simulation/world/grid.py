@@ -1,20 +1,19 @@
 import numpy as np
 from world.cell import Cell
 
+
 class Grid:
     def __init__(self, width: int, height: int):
-        self.width = width
+        self.width  = width
         self.height = height
 
-        # Tableaux NumPy — pour les calculs physiques rapides sur tout le monde
+        # Tableaux NumPy — calculs vectorisés sur tout le terrain
         self.altitude    = np.zeros((height, width))
         self.temperature = np.full((height, width), 15.0)
         self.humidity    = np.zeros((height, width))
         self.water_depth = np.zeros((height, width))
-        self.wind_vx     = np.zeros((height, width))
-        self.wind_vy     = np.zeros((height, width))
 
-        # Grille d'objets Cell — pour la logique biologique
+        # Grille d'objets Cell — logique biologique (synchronisée par terrain.py)
         self.cells = [[Cell(x, y) for x in range(width)]
                                   for y in range(height)]
 
