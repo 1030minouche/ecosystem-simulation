@@ -15,14 +15,6 @@ grid = Grid(width=500, height=500)
 generate_terrain(grid, seed=42)
 engine = SimulationEngine(grid)
 
-_species_dir = os.path.join(os.path.dirname(__file__), "species")
-for _path in sorted(glob.glob(os.path.join(_species_dir, "*.json"))):
-    with open(_path, encoding="utf-8") as _f:
-        _spec = json.load(_f)
-    _params = _spec["params"]
-    _params["color"] = tuple(_params["color"])
-    engine.add_species(_params, count=_spec["count"])
-
 # ── Éditeur de terrain (bloquant — s'exécute dans le thread principal) ────────
 
 print("=" * 60)
@@ -37,6 +29,17 @@ def _noop(_=None): pass
 gui = TerrainEditorGUI(engine.grid, _noop, _noop)
 result = gui.run()
 print("Terrain", "confirmé." if result == "confirm" else "annulé (terrain original conservé).")
+
+# ── Chargement des espèces APRÈS confirmation du terrain ─────────────────────
+# (les cellules valides pour le spawn dépendent du terrain final)
+
+_species_dir = os.path.join(os.path.dirname(__file__), "species")
+for _path in sorted(glob.glob(os.path.join(_species_dir, "*.json"))):
+    with open(_path, encoding="utf-8") as _f:
+        _spec = json.load(_f)
+    _params = _spec["params"]
+    _params["color"] = tuple(_params["color"])
+    engine.add_species(_params, count=_spec["count"])
 
 # ── Thread de simulation ──────────────────────────────────────────────────────
 
