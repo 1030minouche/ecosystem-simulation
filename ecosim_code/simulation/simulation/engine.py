@@ -61,6 +61,7 @@ class SimulationEngine:
                     energy=sp_ind.energy_start * random.uniform(0.5, 1.0),
                     sex=random.choice(["male", "female"]),
                     age=random.randint(0, sp_ind.max_age // 2),
+                    home_x=float(x), home_y=float(y),
                 ))
             spawned += 1
 
