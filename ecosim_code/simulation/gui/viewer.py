@@ -26,7 +26,13 @@ class SimViewer:
         self._terrain_base = None     # np.ndarray H×W×3 pré-calculé
         self._terrain_grid_id = None  # détecte changement de grille (reset)
 
+        # Suivi individuel
+        self._selected_eid      = None   # id() de l'entité sélectionnée
+        self._entity_map        = []     # list[entity] parallèle au listbox
+        self._last_entity_count = -1
+
         self._setup_ui()
+        self._setup_entity_panel()
         self._build_terrain_base()
 
     # ── Construction de l'interface ───────────────────────────────────────────
@@ -153,6 +159,201 @@ class SimViewer:
             tk.Label(row, text=label, fg="#aaaaaa", bg="#16213e",
                      font=small_font).pack(side=tk.LEFT)
 
+    # ── Panneau de suivi individuel ───────────────────────────────────────────
+
+    def _setup_entity_panel(self):
+        """Panneau droit : liste scrollable des entités + zone de détail."""
+        ep = tk.Frame(self.root, bg="#0d1a2e", width=270)
+        ep.pack(side=tk.LEFT, fill=tk.Y)
+        ep.pack_propagate(False)
+        self._entity_panel = ep
+
+        title_font = tkfont.Font(family="Consolas", size=11, weight="bold")
+        hud_font   = tkfont.Font(family="Consolas", size=10)
+        list_font  = tkfont.Font(family="Consolas", size=9)
+        detail_font = tkfont.Font(family="Consolas", size=8)
+
+        def sep():
+            tk.Frame(ep, bg="#1e3a5a", height=1).pack(fill=tk.X, padx=8, pady=5)
+
+        tk.Frame(ep, bg="#0d1a2e", height=8).pack()
+        tk.Label(ep, text="ENTITÉS", fg="#4fc3f7", bg="#0d1a2e",
+                 font=title_font, padx=8).pack(anchor="w")
+        self._entity_count_var = tk.StringVar(value="")
+        tk.Label(ep, textvariable=self._entity_count_var, fg="#5588aa",
+                 bg="#0d1a2e", font=list_font, padx=8).pack(anchor="w")
+
+        sep()
+
+        # ── Listbox + scrollbar ────────────────────────────────────────────
+        list_frame = tk.Frame(ep, bg="#0d1a2e")
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=8)
+
+        scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL)
+        self._entity_listbox = tk.Listbox(
+            list_frame,
+            yscrollcommand=scrollbar.set,
+            bg="#080f1d",
+            fg="#99bbcc",
+            selectbackground="#1a4a7a",
+            selectforeground="#ffffff",
+            font=list_font,
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            activestyle="none",
+        )
+        scrollbar.config(command=self._entity_listbox.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self._entity_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._entity_listbox.bind("<<ListboxSelect>>", self._on_entity_select)
+
+        sep()
+
+        # ── Zone de détail ─────────────────────────────────────────────────
+        tk.Label(ep, text="Détail :", fg="#cccccc", bg="#0d1a2e",
+                 font=hud_font, padx=8).pack(anchor="w")
+
+        detail_frame = tk.Frame(ep, bg="#060c18", bd=0)
+        detail_frame.pack(fill=tk.X, padx=8, pady=(2, 8))
+
+        self._detail_text = tk.Text(
+            detail_frame,
+            bg="#060c18",
+            fg="#88bbdd",
+            font=detail_font,
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            height=20,
+            state=tk.DISABLED,
+            wrap=tk.NONE,
+            cursor="arrow",
+        )
+        self._detail_text.pack(fill=tk.X, padx=6, pady=6)
+        self._set_detail("Cliquez sur une entité.")
+
+    def _set_detail(self, text: str):
+        """Remplace le contenu de la zone de détail."""
+        self._detail_text.config(state=tk.NORMAL)
+        self._detail_text.delete("1.0", tk.END)
+        self._detail_text.insert("1.0", text)
+        self._detail_text.config(state=tk.DISABLED)
+
+    def _rebuild_entity_list(self):
+        """Reconstruit la listbox depuis les entités actuelles."""
+        lb = self._entity_listbox
+        yview      = lb.yview()[0]
+        prev_eid   = self._selected_eid
+
+        lb.delete(0, tk.END)
+        self._entity_map.clear()
+
+        _prefix = {"herbivore": "[H]", "carnivore": "[C]",
+                   "omnivore": "[O]", "plant": "[P]"}
+
+        # Animaux d'abord (plus intéressants), puis plantes
+        entities = (
+            sorted(self.engine.individuals, key=lambda e: (e.species.name, e.x)) +
+            sorted(self.engine.plants,      key=lambda e: (e.species.name, e.x))
+        )
+
+        new_sel_idx = None
+        for idx, entity in enumerate(entities):
+            pref  = _prefix.get(entity.species.type, "[?]")
+            label = f"{pref} {entity.species.name:<10} ({int(entity.x):3},{int(entity.y):3})"
+            lb.insert(tk.END, label)
+            self._entity_map.append(entity)
+            if id(entity) == prev_eid:
+                new_sel_idx = idx
+
+        # Restaurer sélection ou position de scroll
+        if new_sel_idx is not None:
+            lb.selection_set(new_sel_idx)
+            lb.see(new_sel_idx)
+        else:
+            lb.yview_moveto(yview)
+
+        n_a = len(self.engine.individuals)
+        n_p = len(self.engine.plants)
+        self._entity_count_var.set(f"{n_a} animaux · {n_p} plantes")
+
+    def _on_entity_select(self, _event):
+        sel = self._entity_listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        if idx < len(self._entity_map):
+            entity = self._entity_map[idx]
+            self._selected_eid = id(entity)
+            self._show_entity_detail(entity)
+
+    def _show_entity_detail(self, entity):
+        from entities.animal import Individual
+        sp = entity.species
+        bar = "─" * 30
+        lines = [
+            f"{sp.name}  [{sp.type}]",
+            bar,
+            f"Position  : ({entity.x:.1f}, {entity.y:.1f})",
+            f"Âge       : {entity.age:,} ticks",
+            f"Énergie   : {entity.energy:.1f} / {sp.energy_start:.1f}",
+        ]
+        if isinstance(entity, Individual):
+            lines += [
+                f"État      : {entity.state}",
+                f"Sexe      : {entity.sex}",
+            ]
+            if entity.gestation_timer > 0:
+                lines.append(f"Gestation : {entity.gestation_timer} ticks")
+            lines += [
+                bar,
+                f"Vitesse   : {sp.speed:.3f}",
+                f"Perception: {sp.perception_radius:.2f}",
+                f"Repr.taux : {sp.reproduction_rate:.3f}",
+                f"Consomm.  : {sp.energy_consumption:.4f}",
+                f"E.nourrit.: {sp.energy_from_food:.1f}",
+                f"Âge max   : {sp.max_age:,}",
+                f"Maturité  : {sp.sexual_maturity_ticks:,}",
+                f"Gest.ticks: {sp.gestation_ticks:,}",
+                f"Mort.juv. : {sp.juvenile_mortality_rate:.2e}",
+                f"Peur      : {sp.fear_factor:.2f}",
+            ]
+        else:
+            lines += [
+                f"Croissance: {entity.growth:.3f}",
+                bar,
+                f"Tx crois. : {sp.growth_rate:.5f}",
+                f"Repr.taux : {sp.reproduction_rate:.3f}",
+                f"Âge max   : {sp.max_age:,}",
+            ]
+        self._set_detail("\n".join(lines))
+
+    def _update_entity_panel(self):
+        """Appelé à chaque frame : rebuild liste si count change, màj détail si sélection."""
+        # Vérifie si l'entité sélectionnée est encore dans la simulation
+        if self._selected_eid is not None:
+            current_ids = (
+                {id(e) for e in self.engine.individuals} |
+                {id(e) for e in self.engine.plants}
+            )
+            if self._selected_eid not in current_ids:
+                self._selected_eid = None
+                self._entity_listbox.selection_clear(0, tk.END)
+                self._set_detail("Entité disparue.")
+
+        total = len(self.engine.individuals) + len(self.engine.plants)
+        if total != self._last_entity_count:
+            self._last_entity_count = total
+            self._rebuild_entity_list()
+
+        # Mise à jour temps réel du détail (état, énergie, position bougent)
+        if self._selected_eid is not None:
+            for e in self._entity_map:
+                if id(e) == self._selected_eid:
+                    self._show_entity_detail(e)
+                    break
+
     # ── Filtre jour / nuit ────────────────────────────────────────────────────
 
     @staticmethod
@@ -248,6 +449,21 @@ class SimViewer:
         self._tk_img = ImageTk.PhotoImage(img)
         self.canvas.create_image(0, 0, anchor=tk.NW, image=self._tk_img)
 
+        # Surlignage de l'entité sélectionnée
+        self.canvas.delete("highlight")
+        if self._selected_eid is not None:
+            scale = CANVAS_W / self.engine.grid.width
+            for e in self._entity_map:
+                if id(e) == self._selected_eid:
+                    cx = e.x * scale
+                    cy = e.y * scale
+                    r  = 7
+                    self.canvas.create_oval(
+                        cx - r, cy - r, cx + r, cy + r,
+                        outline="#ffffff", width=2, tags="highlight",
+                    )
+                    break
+
     # ── Mise à jour HUD ───────────────────────────────────────────────────────
 
     def _update_hud(self, tod: float):
@@ -327,6 +543,7 @@ class SimViewer:
 
         self._render_frame(tod)
         self._update_hud(tod)
+        self._update_entity_panel()
 
         # Couleur de fond du canvas selon le ciel
         self.canvas.configure(bg=self._sky_color(tod))
@@ -352,6 +569,13 @@ class SimViewer:
             widget.destroy()
         self._pop_vars.clear()
         self._play_btn.config(text="▶  Play", bg="#1e6b2e")
+        # Réinitialiser le suivi individuel
+        self._selected_eid = None
+        self._entity_map.clear()
+        self._last_entity_count = -1
+        self._entity_listbox.delete(0, tk.END)
+        self._entity_count_var.set("")
+        self._set_detail("Cliquez sur une entité.")
 
     def _generate_report(self):
         filename = self.engine.generate_report()
