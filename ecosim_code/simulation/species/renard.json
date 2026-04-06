@@ -42,6 +42,7 @@
     "juvenile_mortality_rate": 6e-06,
     "juvenile_mortality_rate_std": 1e-06,
     "fear_factor": 0.0,
-    "fear_factor_std": 0.0
+    "fear_factor_std": 0.0,
+    "herd_cohesion": 0.1
   }
 }

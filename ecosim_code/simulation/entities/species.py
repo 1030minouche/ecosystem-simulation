@@ -89,3 +89,8 @@ class Species:
     juvenile_mortality_rate: float = 0.0     # probabilité de mort/tick pour les juvéniles
     fear_factor: float = 0.0                 # réduction du taux de reprod. par prédateur proche
                                              # formule : rate / (1 + fear_factor × n_predateurs)
+
+    # Comportement de troupeau
+    herd_cohesion: float = 0.0               # 0 = solitaire, 1 = colle au groupe
+                                             # lors du wander, biaise la cible vers le centroïde
+                                             # des congénères proches (rayon = 2.5 × perception)
