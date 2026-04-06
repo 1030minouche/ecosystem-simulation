@@ -46,6 +46,10 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
     gestation_count: int = 0
     gestation_species: object = None  # Species pré-calculé au moment de la fécondation
 
+    # Territoire natal (-1 = non défini)
+    home_x: float = -1.0
+    home_y: float = -1.0
+
     # ── Boucle de vie ─────────────────────────────────────────────────────────
 
     def tick(self, grid, all_plants, all_individuals, time_of_day: float = 0.5):

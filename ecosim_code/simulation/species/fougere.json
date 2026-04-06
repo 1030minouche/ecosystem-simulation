@@ -3,13 +3,17 @@
   "params": {
     "name": "Fougere",
     "type": "plant",
-    "color": [0.1, 0.45, 0.15],
+    "color": [
+      0.1,
+      0.45,
+      0.15
+    ],
     "temp_min": 5.0,
     "temp_max": 24.0,
     "humidity_min": 0.45,
     "humidity_max": 1.0,
     "altitude_min": 0.35,
-    "altitude_max": 0.70,
+    "altitude_max": 0.7,
     "reproduction_rate": 0.7,
     "reproduction_rate_std": 0.05,
     "max_age": 4380000,
@@ -26,8 +30,8 @@
     "perception_radius": 0.0,
     "perception_radius_std": 0.0,
     "food_sources": [],
-    "growth_rate": 0.000025,
-    "growth_rate_std": 0.000004,
+    "growth_rate": 2.5e-05,
+    "growth_rate_std": 4e-06,
     "dispersal_radius": 5,
     "activity_pattern": "diurnal",
     "can_swim": false,
@@ -44,6 +48,8 @@
     "fear_factor": 0.0,
     "fear_factor_std": 0.0,
     "herd_cohesion": 0.0,
-    "mutation_rate": 0.0
+    "mutation_rate": 0.0,
+    "territory_radius": 0.0,
+    "home_protection": 0.0
   }
 }

@@ -36,6 +36,7 @@ class ReproductionMixin:
                 energy=baby_sp.energy_start * 0.5,
                 sex=random.choice(["male", "female"]),
                 wander_angle=random.uniform(0, 2 * math.pi),
+                home_x=bx, home_y=by,
             ))
         self.gestation_count   = 0
         self.gestation_species = None
@@ -134,6 +135,7 @@ class ReproductionMixin:
                     energy=baby_sp.energy_start * 0.6,
                     sex=random.choice(["male", "female"]),
                     wander_angle=random.uniform(0, 2 * math.pi),
+                    home_x=bx, home_y=by,
                 ))
             self.reproduction_cooldown            = self.species.reproduction_cooldown_length
             nearest_partner.reproduction_cooldown = self.species.reproduction_cooldown_length
