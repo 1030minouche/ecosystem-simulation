@@ -13,6 +13,10 @@ CANVAS_W = 700
 CANVAS_H = 700
 REFRESH_MS = 50   # 20 fps
 
+# ── Constantes panneau cartes entités ────────────────────────────────────────
+CARD_H   = 58    # hauteur d'une carte en pixels
+CARD_PAD = 6     # marge haute/basse dans le canvas cartes
+
 
 class SimViewer:
     def __init__(self, engine):
@@ -31,16 +35,17 @@ class SimViewer:
         self._snap_individuals = []
 
         # Suivi individuel
-        self._selected_eid      = None   # id() de l'entité sélectionnée
-        self._entity_map        = []     # list[entity] parallèle au listbox
-        self._last_entity_count = -1
+        self._selected_eid       = None  # id() de l'entité sélectionnée
+        self._selected_card_idx  = None  # index dans _entity_map
+        self._entity_map         = []    # list[entity] parallèle aux cartes
+        self._last_entity_count  = -1
 
         # Caméra et zoom (animés par interpolation exponentielle)
-        self._zoom    = 1.0    # zoom courant
-        self._zoom_t  = 1.0    # zoom cible
-        self._cam_x   = 250.0  # centre caméra (coords monde)
+        self._zoom    = 1.0
+        self._zoom_t  = 1.0
+        self._cam_x   = 250.0
         self._cam_y   = 250.0
-        self._cam_tx  = 250.0  # centre cible
+        self._cam_tx  = 250.0
         self._cam_ty  = 250.0
 
         self._setup_ui()
@@ -172,73 +177,82 @@ class SimViewer:
             tk.Label(row, text=label, fg="#aaaaaa", bg="#16213e",
                      font=small_font).pack(side=tk.LEFT)
 
-    # ── Panneau de suivi individuel ───────────────────────────────────────────
+    # ── Panneau cartes d'entités ──────────────────────────────────────────────
 
     def _setup_entity_panel(self):
-        """Panneau droit : liste scrollable des entités + zone de détail."""
-        ep = tk.Frame(self.root, bg="#0d1a2e", width=270)
+        """Panneau droit : cartes visuelles scrollables + zone de détail."""
+        ep = tk.Frame(self.root, bg="#0b1628", width=275)
         ep.pack(side=tk.LEFT, fill=tk.Y)
         ep.pack_propagate(False)
         self._entity_panel = ep
 
-        title_font = tkfont.Font(family="Consolas", size=11, weight="bold")
-        hud_font   = tkfont.Font(family="Consolas", size=10)
-        list_font  = tkfont.Font(family="Consolas", size=9)
-        detail_font = tkfont.Font(family="Consolas", size=8)
+        _ff = "Consolas"
+        self._cf_title  = tkfont.Font(family=_ff, size=11, weight="bold")
+        self._cf_count  = tkfont.Font(family=_ff, size=9)
+        self._cf_name   = tkfont.Font(family=_ff, size=9,  weight="bold")
+        self._cf_small  = tkfont.Font(family=_ff, size=8)
+        self._cf_detail = tkfont.Font(family=_ff, size=8)
 
         def sep():
             tk.Frame(ep, bg="#1e3a5a", height=1).pack(fill=tk.X, padx=8, pady=5)
 
-        tk.Frame(ep, bg="#0d1a2e", height=8).pack()
-        tk.Label(ep, text="ENTITÉS", fg="#4fc3f7", bg="#0d1a2e",
-                 font=title_font, padx=8).pack(anchor="w")
+        # ── En-tête ──────────────────────────────────────────────────────────
+        tk.Frame(ep, bg="#0b1628", height=8).pack()
+        tk.Label(ep, text="ENTITÉS", fg="#4fc3f7", bg="#0b1628",
+                 font=self._cf_title, padx=8).pack(anchor="w")
         self._entity_count_var = tk.StringVar(value="")
-        tk.Label(ep, textvariable=self._entity_count_var, fg="#5588aa",
-                 bg="#0d1a2e", font=list_font, padx=8).pack(anchor="w")
+        tk.Label(ep, textvariable=self._entity_count_var, fg="#4a7a9b",
+                 bg="#0b1628", font=self._cf_count, padx=8).pack(anchor="w")
 
         sep()
 
-        # ── Listbox + scrollbar ────────────────────────────────────────────
-        list_frame = tk.Frame(ep, bg="#0d1a2e")
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=8)
+        # ── Canvas cartes (scrollable) ────────────────────────────────────────
+        cards_frame = tk.Frame(ep, bg="#0b1628")
+        cards_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=(0, 2))
 
-        scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL)
-        self._entity_listbox = tk.Listbox(
-            list_frame,
-            yscrollcommand=scrollbar.set,
-            bg="#080f1d",
-            fg="#99bbcc",
-            selectbackground="#1a4a7a",
-            selectforeground="#ffffff",
-            font=list_font,
-            relief=tk.FLAT,
-            bd=0,
+        self._cards_sb = tk.Scrollbar(cards_frame, orient=tk.VERTICAL,
+                                      bg="#091524", troughcolor="#060e1a",
+                                      width=8)
+        self._cards_canvas = tk.Canvas(
+            cards_frame,
+            bg="#07101e",
             highlightthickness=0,
-            activestyle="none",
+            yscrollcommand=self._cards_sb.set,
         )
-        scrollbar.config(command=self._entity_listbox.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self._entity_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self._entity_listbox.bind("<<ListboxSelect>>", self._on_entity_select)
+        self._cards_sb.config(command=self._cards_canvas.yview)
+        self._cards_sb.pack(side=tk.RIGHT, fill=tk.Y)
+        self._cards_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self._cards_canvas.bind("<Button-1>",   self._on_card_click)
+        self._cards_canvas.bind("<MouseWheel>",  self._on_cards_scroll)
+        self._cards_canvas.bind("<Button-4>",    self._on_cards_scroll)
+        self._cards_canvas.bind("<Button-5>",    self._on_cards_scroll)
 
         sep()
 
-        # ── Zone de détail ─────────────────────────────────────────────────
-        tk.Label(ep, text="Détail :", fg="#cccccc", bg="#0d1a2e",
-                 font=hud_font, padx=8).pack(anchor="w")
+        # ── Zone de détail ────────────────────────────────────────────────────
+        detail_hdr = tk.Frame(ep, bg="#0b1628")
+        detail_hdr.pack(fill=tk.X, padx=8)
+        tk.Label(detail_hdr, text="▸ Détail", fg="#7ab8d4", bg="#0b1628",
+                 font=self._cf_count).pack(side=tk.LEFT)
+        self._detail_name_var = tk.StringVar(value="")
+        tk.Label(detail_hdr, textvariable=self._detail_name_var,
+                 fg="#cccccc", bg="#0b1628",
+                 font=tkfont.Font(family="Consolas", size=9, weight="bold")
+                 ).pack(side=tk.LEFT, padx=(6, 0))
 
-        detail_frame = tk.Frame(ep, bg="#060c18", bd=0)
-        detail_frame.pack(fill=tk.X, padx=8, pady=(2, 8))
+        detail_outer = tk.Frame(ep, bg="#050c18", bd=0)
+        detail_outer.pack(fill=tk.X, padx=8, pady=(3, 8))
 
         self._detail_text = tk.Text(
-            detail_frame,
-            bg="#060c18",
-            fg="#88bbdd",
-            font=detail_font,
+            detail_outer,
+            bg="#050c18",
+            fg="#7aaabb",
+            font=self._cf_detail,
             relief=tk.FLAT,
             bd=0,
             highlightthickness=0,
-            height=20,
+            height=13,
             state=tk.DISABLED,
             wrap=tk.NONE,
             cursor="arrow",
@@ -246,72 +260,203 @@ class SimViewer:
         self._detail_text.pack(fill=tk.X, padx=6, pady=6)
         self._set_detail("Cliquez sur une entité.")
 
-    def _set_detail(self, text: str):
-        """Remplace le contenu de la zone de détail."""
-        self._detail_text.config(state=tk.NORMAL)
-        self._detail_text.delete("1.0", tk.END)
-        self._detail_text.insert("1.0", text)
-        self._detail_text.config(state=tk.DISABLED)
+    # ── Dessin des cartes ─────────────────────────────────────────────────────
 
     def _rebuild_entity_list(self):
-        """Reconstruit la listbox depuis les entités actuelles."""
-        lb = self._entity_listbox
-        yview      = lb.yview()[0]
-        prev_eid   = self._selected_eid
+        """Reconstruit toutes les cartes visuelles dans le canvas."""
+        from entities.animal import Individual
 
-        lb.delete(0, tk.END)
+        prev_eid = self._selected_eid
         self._entity_map.clear()
+        self._selected_card_idx = None
 
-        _prefix = {"herbivore": "[H]", "carnivore": "[C]",
-                   "omnivore": "[O]", "plant": "[P]"}
-
-        # Animaux d'abord (plus intéressants), puis plantes
         entities = (
             sorted(self._snap_individuals, key=lambda e: (e.species.name, e.x)) +
             sorted(self._snap_plants,      key=lambda e: (e.species.name, e.x))
         )
+        self._entity_map = list(entities)
 
-        new_sel_idx = None
-        for idx, entity in enumerate(entities):
-            pref  = _prefix.get(entity.species.type, "[?]")
-            label = f"{pref} {entity.species.name:<10} ({int(entity.x):3},{int(entity.y):3})"
-            lb.insert(tk.END, label)
-            self._entity_map.append(entity)
-            if id(entity) == prev_eid:
-                new_sel_idx = idx
+        cc = self._cards_canvas
+        cc.delete("all")
 
-        # Restaurer sélection ou position de scroll
-        if new_sel_idx is not None:
-            lb.selection_set(new_sel_idx)
-            lb.see(new_sel_idx)
-        else:
-            lb.yview_moveto(yview)
+        cc.update_idletasks()
+        cw = cc.winfo_width()
+        if cw < 10:
+            cw = 251
+
+        bar_x0 = 16
+        bar_x1 = cw - 8
+        bar_w  = max(1, bar_x1 - bar_x0)
+
+        _state_labels = {
+            "wander":    "erre",
+            "seek_food": "cherche nourriture",
+            "flee":      "fuit !",
+            "reproduce": "s'accouple",
+            "sleep":     "dort",
+            "en_vol":    "en vol",
+            "au_sol":    "au sol",
+        }
+
+        for idx, entity in enumerate(self._entity_map):
+            sp        = entity.species
+            is_animal = isinstance(entity, Individual)
+            selected  = (id(entity) == prev_eid)
+
+            r, g, b = [int(v * 255) for v in sp.color]
+            sp_hex  = f"#{r:02x}{g:02x}{b:02x}"
+
+            y0 = CARD_PAD + idx * CARD_H
+            y1 = y0 + CARD_H - 3
+
+            # ── Fond carte ────────────────────────────────────────────────
+            bg_col  = "#132440" if selected else "#0a1322"
+            brd_col = "#2a5080" if selected else "#152030"
+            cc.create_rectangle(2, y0, cw - 2, y1,
+                                 fill=bg_col, outline=brd_col, width=1,
+                                 tags=(f"card_bg_{idx}", f"card_{idx}"))
+
+            # ── Bande couleur gauche ──────────────────────────────────────
+            cc.create_rectangle(2, y0, 6, y1,
+                                 fill=sp_hex, outline="",
+                                 tags=f"card_{idx}")
+
+            # ── Icône type ────────────────────────────────────────────────
+            type_icons = {"herbivore": "◆", "carnivore": "▲",
+                          "omnivore": "●", "plant": "✿"}
+            icon = type_icons.get(sp.type, "·")
+
+            # ── Ligne 1 : icône + nom + position ─────────────────────────
+            name_col = sp_hex if selected else _blend_hex(sp_hex, "#aaaaaa", 0.55)
+            cc.create_text(12, y0 + 11,
+                           text=f"{icon} {sp.name}",
+                           font=self._cf_name, fill=name_col, anchor="w",
+                           tags=f"card_{idx}")
+            cc.create_text(cw - 5, y0 + 11,
+                           text=f"({int(entity.x):3},{int(entity.y):3})",
+                           font=self._cf_small, fill="#3a5a70", anchor="e",
+                           tags=f"card_{idx}")
+
+            # ── Ligne 2 : barre énergie ───────────────────────────────────
+            max_e = max(sp.energy_start, 0.001)
+            pct   = max(0.0, min(1.0, entity.energy / max_e))
+            if   pct > 0.65: bar_col = "#27a855"
+            elif pct > 0.35: bar_col = "#c87d18"
+            else:             bar_col = "#b82828"
+
+            # fond
+            cc.create_rectangle(bar_x0, y0 + 26, bar_x1, y0 + 33,
+                                 fill="#0d1a28", outline="#1a2e42",
+                                 tags=f"card_{idx}")
+            # remplissage
+            fill_x = bar_x0 + int(bar_w * pct)
+            if fill_x > bar_x0:
+                cc.create_rectangle(bar_x0, y0 + 26, fill_x, y0 + 33,
+                                     fill=bar_col, outline="",
+                                     tags=f"card_{idx}")
+            # pourcentage
+            pct_col = "#5a9a6a" if pct > 0.65 else ("#c8961a" if pct > 0.35 else "#a03030")
+            cc.create_text(bar_x1 + 2, y0 + 29,
+                           text=f"{int(pct*100)}%",
+                           font=self._cf_small, fill=pct_col, anchor="w",
+                           tags=f"card_{idx}")
+
+            # ── Ligne 3 : sexe + état / croissance ───────────────────────
+            if is_animal:
+                sex_sym  = "♂" if entity.sex == "male" else "♀"
+                sex_col  = "#5588cc" if entity.sex == "male" else "#cc6688"
+                state_lbl = _state_labels.get(entity.state, entity.state)
+                state_col = "#bb3333" if entity.state == "flee" else "#5a8898"
+                if entity.gestation_timer > 0:
+                    state_lbl = f"♥ gestation ({entity.gestation_timer})"
+                    state_col = "#cc88aa"
+                cc.create_text(12, y0 + 46,
+                               text=sex_sym, font=self._cf_small,
+                               fill=sex_col, anchor="w",
+                               tags=f"card_{idx}")
+                cc.create_text(22, y0 + 46,
+                               text=state_lbl, font=self._cf_small,
+                               fill=state_col, anchor="w",
+                               tags=f"card_{idx}")
+            else:
+                growth_pct = max(0.0, min(1.0, entity.growth))
+                gbar_x1 = bar_x0 + int(bar_w * growth_pct * 0.6)
+                cc.create_rectangle(bar_x0, y0 + 41, bar_x0 + int(bar_w * 0.6), y0 + 46,
+                                     fill="#0a1820", outline="",
+                                     tags=f"card_{idx}")
+                if gbar_x1 > bar_x0:
+                    cc.create_rectangle(bar_x0, y0 + 41, gbar_x1, y0 + 46,
+                                         fill="#2a7a3a", outline="",
+                                         tags=f"card_{idx}")
+                cc.create_text(12, y0 + 46,
+                               text=f"✿ croiss. {entity.growth:.2f}",
+                               font=self._cf_small, fill="#3a8a4a", anchor="w",
+                               tags=f"card_{idx}")
+
+            if selected:
+                self._selected_card_idx = idx
+
+        # Scrollregion
+        total_h = CARD_PAD + len(self._entity_map) * CARD_H + CARD_PAD
+        cc.config(scrollregion=(0, 0, cw, total_h))
 
         n_a = len(self._snap_individuals)
         n_p = len(self._snap_plants)
         self._entity_count_var.set(f"{n_a} animaux · {n_p} plantes")
 
-    def _on_entity_select(self, _event):
-        sel = self._entity_listbox.curselection()
-        if not sel:
-            return
-        idx = sel[0]
-        if idx < len(self._entity_map):
+        # Scroller vers la carte sélectionnée si elle existe
+        if self._selected_card_idx is not None and total_h > 0:
+            frac = (self._selected_card_idx * CARD_H) / total_h
+            cc.yview_moveto(frac)
+
+    def _highlight_card(self, idx: int, selected: bool):
+        """Change rapidement la couleur de fond d'une carte sans tout redessiner."""
+        bg  = "#132440" if selected else "#0a1322"
+        brd = "#2a5080" if selected else "#152030"
+        self._cards_canvas.itemconfig(f"card_bg_{idx}",
+                                       fill=bg, outline=brd)
+
+    # ── Interaction cartes ────────────────────────────────────────────────────
+
+    def _on_card_click(self, event):
+        canvas_y = self._cards_canvas.canvasy(event.y)
+        idx = int((canvas_y - CARD_PAD) / CARD_H)
+        if 0 <= idx < len(self._entity_map):
+            # Désélectionner ancienne carte
+            if self._selected_card_idx is not None:
+                self._highlight_card(self._selected_card_idx, False)
+            # Sélectionner nouvelle
             entity = self._entity_map[idx]
-            self._selected_eid = id(entity)
+            self._selected_eid      = id(entity)
+            self._selected_card_idx = idx
+            self._highlight_card(idx, True)
             self._show_entity_detail(entity)
-            # Zoom x5 centré sur l'entité
             self._zoom_t = 5.0
             self._cam_tx = entity.x
             self._cam_ty = entity.y
 
+    def _on_cards_scroll(self, event):
+        if event.num == 4:
+            self._cards_canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            self._cards_canvas.yview_scroll(1, "units")
+        else:
+            self._cards_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    # ── Détail entité ─────────────────────────────────────────────────────────
+
+    def _set_detail(self, text: str, name: str = ""):
+        self._detail_name_var.set(name)
+        self._detail_text.config(state=tk.NORMAL)
+        self._detail_text.delete("1.0", tk.END)
+        self._detail_text.insert("1.0", text)
+        self._detail_text.config(state=tk.DISABLED)
+
     def _show_entity_detail(self, entity):
         from entities.animal import Individual
-        sp = entity.species
-        bar = "─" * 30
+        sp  = entity.species
+        bar = "─" * 28
         lines = [
-            f"{sp.name}  [{sp.type}]",
-            bar,
             f"Position  : ({entity.x:.1f}, {entity.y:.1f})",
             f"Âge       : {entity.age:,} ticks",
             f"Énergie   : {entity.energy:.1f} / {sp.energy_start:.1f}",
@@ -344,19 +489,20 @@ class SimViewer:
                 f"Repr.taux : {sp.reproduction_rate:.3f}",
                 f"Âge max   : {sp.max_age:,}",
             ]
-        self._set_detail("\n".join(lines))
+        self._set_detail("\n".join(lines), name=f"  {sp.name}")
+
+    # ── Mise à jour panneau (chaque frame) ───────────────────────────────────
 
     def _update_entity_panel(self):
-        """Appelé à chaque frame : rebuild liste si count change, màj détail si sélection."""
-        # Vérifie si l'entité sélectionnée est encore dans la simulation
+        # Vérifie si l'entité sélectionnée est encore vivante
         if self._selected_eid is not None:
             current_ids = (
                 {id(e) for e in self._snap_individuals} |
                 {id(e) for e in self._snap_plants}
             )
             if self._selected_eid not in current_ids:
-                self._selected_eid = None
-                self._entity_listbox.selection_clear(0, tk.END)
+                self._selected_eid      = None
+                self._selected_card_idx = None
                 self._set_detail("Entité disparue.")
                 self._zoom_reset()
 
@@ -365,12 +511,12 @@ class SimViewer:
             self._last_entity_count = total
             self._rebuild_entity_list()
 
-        # Mise à jour temps réel : détail + caméra suit l'entité
+        # Mise à jour temps réel du détail + caméra
         if self._selected_eid is not None:
             for e in self._entity_map:
                 if id(e) == self._selected_eid:
                     self._show_entity_detail(e)
-                    self._cam_tx = e.x   # la caméra suit l'entité
+                    self._cam_tx = e.x
                     self._cam_ty = e.y
                     break
 
@@ -378,60 +524,45 @@ class SimViewer:
 
     @staticmethod
     def _day_night_filter(img_arr: np.ndarray, tod: float) -> np.ndarray:
-        """
-        Applique un filtre de luminosité + teinte selon l'heure simulée.
-        tod ∈ [0, 1) : 0 = minuit, 0.25 = aube, 0.5 = midi, 0.75 = crépuscule.
-        """
-        # Hauteur du soleil : -1 (minuit) → +1 (midi)
         sun = math.sin(tod * 2 * math.pi - math.pi / 2)
-
-        # Luminosité globale : 0.28 la nuit, 1.0 à midi
         brightness = 0.28 + 0.72 * (sun + 1) / 2
-
         img = img_arr.astype(np.float32)
         img *= brightness
-
-        # Teinte bleue nocturne (soleil sous l'horizon)
         night = max(0.0, -sun * 0.7)
         if night > 0:
             img[:, :, 2] = np.minimum(255, img[:, :, 2] + night * 28)
             img[:, :, 0] *= (1.0 - night * 0.30)
             img[:, :, 1] *= (1.0 - night * 0.18)
-
-        # Teinte dorée à l'aube et au crépuscule (soleil proche de l'horizon)
         golden = max(0.0, 1.0 - abs(sun) * 4.5) if sun > -0.25 else 0.0
         if golden > 0:
             img[:, :, 0] = np.minimum(255, img[:, :, 0] + golden * 45)
             img[:, :, 1] = np.minimum(255, img[:, :, 1] + golden * 18)
-
         return np.clip(img, 0, 255).astype(np.uint8)
 
     @staticmethod
     def _sky_color(tod: float) -> str:
-        """Couleur de fond du canvas selon l'heure (vue du ciel)."""
         sun = math.sin(tod * 2 * math.pi - math.pi / 2)
         if sun < -0.25:
-            return "#020810"   # nuit profonde
+            return "#020810"
         if sun < 0.0:
-            return "#0c0c1e"   # aube/crépuscule sombre
+            return "#0c0c1e"
         if sun < 0.3:
-            return "#0a0a18"   # matin/soir
-        return "#000011"       # journée
+            return "#0a0a18"
+        return "#000011"
 
     # ── Rendu terrain ─────────────────────────────────────────────────────────
 
     def _build_terrain_base(self):
-        """Construit l'image RGB du terrain (vectorisé numpy, exécuté une fois)."""
-        alt = self.engine.grid.altitude   # shape (H, W), float 0-1
+        alt = self.engine.grid.altitude
         h, w = alt.shape
         img = np.zeros((h, w, 3), dtype=np.uint8)
-        img[:]           = ( 20,  80, 160)  # eau profonde
-        img[alt >= 0.28] = ( 30, 110, 185)  # eau peu profonde
-        img[alt >= 0.30] = (200, 175,  95)  # plage
-        img[alt >= 0.40] = (130, 190,  75)  # plaine
-        img[alt >= 0.60] = ( 60, 122,  51)  # forêt
-        img[alt >= 0.75] = (105, 100,  95)  # roche
-        img[alt >= 0.85] = (230, 230, 240)  # neige
+        img[:]           = ( 20,  80, 160)
+        img[alt >= 0.28] = ( 30, 110, 185)
+        img[alt >= 0.30] = (200, 175,  95)
+        img[alt >= 0.40] = (130, 190,  75)
+        img[alt >= 0.60] = ( 60, 122,  51)
+        img[alt >= 0.75] = (105, 100,  95)
+        img[alt >= 0.85] = (230, 230, 240)
         self._terrain_base = img
         self._terrain_grid_id = id(self.engine.grid)
 
@@ -443,29 +574,24 @@ class SimViewer:
 
         grid_h, grid_w = self._terrain_base.shape[:2]
 
-        # ── Fenêtre de vue (monde → canvas) ──────────────────────────────────
         view_w = grid_w / self._zoom
         view_h = grid_h / self._zoom
-        # Coordonnées monde du coin haut-gauche de la vue
         x0 = int(self._cam_x - view_w / 2)
         y0 = int(self._cam_y - view_h / 2)
-        # Clampage aux bords de la grille
         x0 = max(0, min(x0, grid_w - int(view_w)))
         y0 = max(0, min(y0, grid_h - int(view_h)))
         x1 = min(grid_w, x0 + int(view_w))
         y1 = min(grid_h, y0 + int(view_h))
 
         img_arr = self._terrain_base[y0:y1, x0:x1].copy()
-        vw, vh  = x1 - x0, y1 - y0  # dimensions de la vue en pixels monde
+        vw, vh  = x1 - x0, y1 - y0
 
-        # Plantes — pixel unique
         for plant in self._snap_plants:
             px, py = int(plant.x) - x0, int(plant.y) - y0
             if 0 <= px < vw and 0 <= py < vh:
                 r, g, b = [int(c * 255) for c in plant.species.color]
                 img_arr[py, px] = (r, g, b)
 
-        # Animaux — carré 3×3
         for ind in self._snap_individuals:
             px, py = int(ind.x) - x0, int(ind.y) - y0
             r, g, b = [int(c * 255) for c in ind.species.color]
@@ -475,9 +601,7 @@ class SimViewer:
                     if 0 <= nx2 < vw and 0 <= ny2 < vh:
                         img_arr[ny2, nx2] = (r, g, b)
 
-        # Filtre jour/nuit
         img_arr = self._day_night_filter(img_arr, tod)
-
         img = Image.fromarray(img_arr, "RGB")
         img = img.resize((CANVAS_W, CANVAS_H), Image.NEAREST)
         self._tk_img = ImageTk.PhotoImage(img)
@@ -514,11 +638,8 @@ class SimViewer:
         self._time_var.set(f"{icone}  {heure:02d}h  Jour {day}")
         self._year_var.set(f"Année {year}")
         self._speed_var_d.set(f"Vitesse: ×{self.engine.speed}")
-
-        # Barre solaire (position du soleil dans la journée)
         self._draw_sun_bar(tod)
 
-        # Populations
         counts = {}
         for p in self._snap_plants:
             counts[p.species.name] = counts.get(p.species.name, 0) + 1
@@ -543,11 +664,8 @@ class SimViewer:
             self._pop_vars[n].set(f"  {n}: {c:,}")
 
     def _draw_sun_bar(self, tod: float):
-        """Dessine une petite barre arc-en-ciel avec la position du soleil."""
         W, H = 196, 14
         self._sun_canvas.delete("all")
-
-        # Fond dégradé nuit→aube→jour→crépuscule→nuit
         segments = [
             (0.00, "#020810"), (0.20, "#0d1030"), (0.25, "#c06030"),
             (0.30, "#e0c060"), (0.50, "#87ceeb"), (0.70, "#e0c060"),
@@ -558,8 +676,6 @@ class SimViewer:
             t1, _  = segments[i + 1]
             x0, x1 = int(t0 * W), int(t1 * W)
             self._sun_canvas.create_rectangle(x0, 0, x1, H, fill=c0, outline="")
-
-        # Marqueur (soleil ou lune)
         sun = math.sin(tod * 2 * math.pi - math.pi / 2)
         marker_x = int(tod * W)
         color = "#ffee44" if sun >= 0 else "#aaaadd"
@@ -579,7 +695,6 @@ class SimViewer:
             self._snap_individuals = list(self.engine.individuals)
         tod  = (tick % DAY_LENGTH) / DAY_LENGTH
 
-        # Animation fluide caméra + zoom (interpolation exponentielle)
         alpha = 0.14
         self._zoom  += (self._zoom_t  - self._zoom)  * alpha
         self._cam_x += (self._cam_tx - self._cam_x) * alpha
@@ -589,9 +704,7 @@ class SimViewer:
         self._update_hud(tod)
         self._update_entity_panel()
 
-        # Couleur de fond du canvas selon le ciel
         self.canvas.configure(bg=self._sky_color(tod))
-
         self.root.after(REFRESH_MS, self._loop)
 
     # ── Contrôles ─────────────────────────────────────────────────────────────
@@ -607,15 +720,16 @@ class SimViewer:
         self.engine.speed = self._speed_var.get()
 
     def _zoom_reset(self):
-        """Revient à la vue globale (dézoom animé)."""
         self._zoom_t = 1.0
         self._cam_tx = self.engine.grid.width  / 2
         self._cam_ty = self.engine.grid.height / 2
 
     def _on_canvas_click(self, _event):
         """Clic sur le canvas → désélectionne et revient à la vue globale."""
-        self._selected_eid = None
-        self._entity_listbox.selection_clear(0, tk.END)
+        if self._selected_card_idx is not None:
+            self._highlight_card(self._selected_card_idx, False)
+        self._selected_eid      = None
+        self._selected_card_idx = None
         self._set_detail("Cliquez sur une entité.")
         self._zoom_reset()
 
@@ -627,11 +741,11 @@ class SimViewer:
             widget.destroy()
         self._pop_vars.clear()
         self._play_btn.config(text="▶  Play", bg="#1e6b2e")
-        # Réinitialiser le suivi individuel et la caméra
-        self._selected_eid = None
+        self._selected_eid      = None
+        self._selected_card_idx = None
         self._entity_map.clear()
         self._last_entity_count = -1
-        self._entity_listbox.delete(0, tk.END)
+        self._cards_canvas.delete("all")
         self._entity_count_var.set("")
         self._set_detail("Cliquez sur une entité.")
         self._zoom = 1.0
@@ -648,3 +762,15 @@ class SimViewer:
     def run(self):
         self.root.after(REFRESH_MS, self._loop)
         self.root.mainloop()
+
+
+# ── Utilitaires ───────────────────────────────────────────────────────────────
+
+def _blend_hex(hex1: str, hex2: str, t: float) -> str:
+    """Mélange deux couleurs hex avec un facteur t ∈ [0,1] (0 = hex1, 1 = hex2)."""
+    r1, g1, b1 = int(hex1[1:3], 16), int(hex1[3:5], 16), int(hex1[5:7], 16)
+    r2, g2, b2 = int(hex2[1:3], 16), int(hex2[3:5], 16), int(hex2[5:7], 16)
+    r = int(r1 + (r2 - r1) * t)
+    g = int(g1 + (g2 - g1) * t)
+    b = int(b1 + (b2 - b1) * t)
+    return f"#{r:02x}{g:02x}{b:02x}"
