@@ -52,17 +52,12 @@ class SimulationReport:
                 s["peak_population"] = d["count"]
                 s["peak_tick"] = tick
 
-        # Détection d'extinction
+        # Mise à jour de extinct_tick (approximatif : résolution de 500 ticks)
+        # L'événement d'extinction lui-même est émis par engine.tick() via record_event().
         for name in self.species_stats:
             if (name not in species_data and
                     self.species_stats[name]["extinct_tick"] is None):
                 self.species_stats[name]["extinct_tick"] = tick
-                self.events.append({
-                    "tick": tick,
-                    "type": "extinction",
-                    "species": name
-                })
-                print(f"💀 Extinction : {name} au tick {tick}")
 
         self.history.append(snapshot)
 

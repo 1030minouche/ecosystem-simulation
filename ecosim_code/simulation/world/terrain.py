@@ -35,19 +35,34 @@ def _disk_cells(cx: int, cy: int, radius: int, width: int, height: int):
 
 
 def _apply_soil_at(grid: Grid, x: int, y: int) -> None:
-    """Met à jour la classification du sol pour une cellule."""
-    alt = float(grid.altitude[y][x])
-    grid.cells[y][x].altitude = alt
-    grid.humidity[y][x] = 1.0 - alt
+    """Met à jour la classification du sol et les conditions environnementales d'une cellule."""
+    alt  = float(grid.altitude[y][x])
+    cell = grid.cells[y][x]
+
+    # Terrain
+    cell.altitude = alt
+
+    # Sol
     if alt < _WATER_THRESHOLD:
-        grid.cells[y][x].soil_type   = "water"
-        grid.cells[y][x].water_depth = _WATER_THRESHOLD - alt
+        cell.soil_type   = "water"
+        cell.water_depth = _WATER_THRESHOLD - alt
     elif alt > _ROCK_THRESHOLD:
-        grid.cells[y][x].soil_type   = "rock"
-        grid.cells[y][x].water_depth = 0.0
+        cell.soil_type   = "rock"
+        cell.water_depth = 0.0
     else:
-        grid.cells[y][x].soil_type   = "clay"
-        grid.cells[y][x].water_depth = 0.0
+        cell.soil_type   = "clay"
+        cell.water_depth = 0.0
+
+    # Humidité : inverse de l'altitude (eau = 1.0, sommet = 0.0)
+    hum = 1.0 - alt
+    grid.humidity[y][x] = hum
+    cell.humidity = hum
+
+    # Température : décroît avec l'altitude.
+    # Formule calibrée pour que les espèces survivent dans leur plage altitudinale :
+    #   alt=0.30 (plage) ≈ 17.5 °C  |  alt=0.50 (plaine) ≈ 12.5 °C
+    #   alt=0.75 (forêt haute) ≈ 6.25 °C  |  alt=0.85 (roche) ≈ 3.75 °C
+    cell.temperature = 15.0 + (0.4 - alt) * 25.0
 
 
 def _classify_all(grid: Grid) -> None:
