@@ -33,7 +33,8 @@ class SimViewer:
         self._terrain_base = None     # np.ndarray H×W×3 pré-calculé
         self._terrain_grid_id = None  # détecte changement de grille (reset)
 
-        # Snapshots thread-safe (mis à jour une fois par frame sous engine.lock)
+        # Snapshots thread-safe (mis à jour quand le verrou est disponible)
+        self._snap_tick        = 0
         self._snap_plants      = []
         self._snap_individuals = []
 
@@ -701,10 +702,16 @@ class SimViewer:
 
     def _loop(self):
         from simulation.engine import DAY_LENGTH
-        with self.engine.lock:
-            tick                   = self.engine.tick_count
-            self._snap_plants      = list(self.engine.plants)
-            self._snap_individuals = list(self.engine.individuals)
+        # Acquisition non-bloquante : si le moteur tient le verrou (batch ×N),
+        # on réutilise le snapshot précédent plutôt que de bloquer le thread UI.
+        if self.engine.lock.acquire(blocking=False):
+            try:
+                self._snap_tick        = self.engine.tick_count
+                self._snap_plants      = list(self.engine.plants)
+                self._snap_individuals = list(self.engine.individuals)
+            finally:
+                self.engine.lock.release()
+        tick = self._snap_tick
         tod  = (tick % DAY_LENGTH) / DAY_LENGTH
 
         alpha = 0.14
