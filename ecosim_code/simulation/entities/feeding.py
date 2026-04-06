@@ -28,12 +28,16 @@ class FeedingMixin:
                     min_dist2 = d2
                     target = plant
 
-        if self.species.type in ("carnivore", "omnivore"):
+        if self.species.type in ("carnivore", "omnivore", "volant"):
             for other in all_individuals:
                 if not other.alive or other is self:
                     continue
                 if other.species.name not in self.species.food_sources:
                     continue
+                # Un volant en vol ne peut être attrapé que par un autre volant
+                if other.species.type == "volant" and other.state == "en_vol":
+                    if self.species.type != "volant":
+                        continue
                 dx = other.x - self.x
                 dy = other.y - self.y
                 d2 = dx*dx + dy*dy
