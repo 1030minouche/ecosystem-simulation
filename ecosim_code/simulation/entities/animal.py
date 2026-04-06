@@ -104,7 +104,7 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
         predator = self._nearest_predator(all_individuals, time_of_day)
 
         if resting and predator is None:
-            self.state = "sleep"
+            self.state = "au_sol" if self.species.type == "volant" else "sleep"
             self._wander(grid, speed_factor=0.25)
             self.x = max(0, min(grid.width  - 1, self.x))
             self.y = max(0, min(grid.height - 1, self.y))
@@ -124,13 +124,14 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
             self._flee(predator)
         elif self.state == "reproduce":
             newborns.extend(self._try_reproduce(all_individuals, grid))
-        else:
+        else:  # "wander", "en_vol"
             self._wander(grid, nearby_inds=all_individuals)
 
         self.x = max(0, min(grid.width  - 1, self.x))
         self.y = max(0, min(grid.height - 1, self.y))
 
-        if not self.species.can_swim:
+        # Les volants en vol ne sont pas bloqués par l'eau
+        if not self.species.can_swim and self.species.type != "volant":
             self._avoid_water(grid)
 
         return newborns
@@ -152,7 +153,8 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
                 and self.reproduction_cooldown == 0):
             self.state = "reproduce"
             return
-        self.state = "wander"
+        # Volants : en vol quand ils errent, au sol quand ils dorment
+        self.state = "en_vol" if self.species.type == "volant" else "wander"
 
     # ── Environnement ─────────────────────────────────────────────────────────
 
