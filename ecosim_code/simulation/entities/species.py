@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields as dc_fields
 from typing import List
 import random
 
@@ -30,6 +30,23 @@ def sample_params(params: dict) -> dict:
         else:
             result[key] = val
     return result
+
+def blend_species(s1: "Species", s2: "Species") -> "Species":
+    """Crée un Species dont les params variables sont la moyenne de s1 et s2.
+    Les params non-variables (conditions, couleur, etc.) sont hérités de s1.
+    """
+    kwargs = {}
+    for f in dc_fields(s1):
+        v1 = getattr(s1, f.name)
+        v2 = getattr(s2, f.name)
+        if f.name in _VARIABLE_FLOAT:
+            kwargs[f.name] = (v1 + v2) / 2.0
+        elif f.name in _VARIABLE_INT:
+            kwargs[f.name] = round((v1 + v2) / 2)
+        else:
+            kwargs[f.name] = v1
+    return Species(**kwargs)
+
 
 @dataclass
 class Species:

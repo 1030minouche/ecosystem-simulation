@@ -44,6 +44,7 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
     # Gestation : ticks restants avant la naissance + nombre de petits attendus
     gestation_timer: int = 0
     gestation_count: int = 0
+    gestation_species: object = None  # Species pré-calculé au moment de la fécondation
 
     # ── Boucle de vie ─────────────────────────────────────────────────────────
 
