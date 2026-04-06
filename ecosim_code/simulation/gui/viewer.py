@@ -31,6 +31,14 @@ class SimViewer:
         self._entity_map        = []     # list[entity] parallèle au listbox
         self._last_entity_count = -1
 
+        # Caméra et zoom (animés par interpolation exponentielle)
+        self._zoom    = 1.0    # zoom courant
+        self._zoom_t  = 1.0    # zoom cible
+        self._cam_x   = 250.0  # centre caméra (coords monde)
+        self._cam_y   = 250.0
+        self._cam_tx  = 250.0  # centre cible
+        self._cam_ty  = 250.0
+
         self._setup_ui()
         self._setup_entity_panel()
         self._build_terrain_base()
@@ -44,6 +52,7 @@ class SimViewer:
         self.canvas = tk.Canvas(left, width=CANVAS_W, height=CANVAS_H,
                                 bg="#000011", highlightthickness=0)
         self.canvas.pack()
+        self.canvas.bind("<Button-1>", self._on_canvas_click)
 
         # Panneau de contrôle droit
         right = tk.Frame(self.root, bg="#16213e", width=220)
@@ -287,6 +296,10 @@ class SimViewer:
             entity = self._entity_map[idx]
             self._selected_eid = id(entity)
             self._show_entity_detail(entity)
+            # Zoom x5 centré sur l'entité
+            self._zoom_t = 5.0
+            self._cam_tx = entity.x
+            self._cam_ty = entity.y
 
     def _show_entity_detail(self, entity):
         from entities.animal import Individual
@@ -341,17 +354,20 @@ class SimViewer:
                 self._selected_eid = None
                 self._entity_listbox.selection_clear(0, tk.END)
                 self._set_detail("Entité disparue.")
+                self._zoom_reset()
 
         total = len(self.engine.individuals) + len(self.engine.plants)
         if total != self._last_entity_count:
             self._last_entity_count = total
             self._rebuild_entity_list()
 
-        # Mise à jour temps réel du détail (état, énergie, position bougent)
+        # Mise à jour temps réel : détail + caméra suit l'entité
         if self._selected_eid is not None:
             for e in self._entity_map:
                 if id(e) == self._selected_eid:
                     self._show_entity_detail(e)
+                    self._cam_tx = e.x   # la caméra suit l'entité
+                    self._cam_ty = e.y
                     break
 
     # ── Filtre jour / nuit ────────────────────────────────────────────────────
@@ -421,24 +437,38 @@ class SimViewer:
         if id(self.engine.grid) != self._terrain_grid_id:
             self._build_terrain_base()
 
-        img_arr = self._terrain_base.copy()
-        h, w = img_arr.shape[:2]
+        grid_h, grid_w = self._terrain_base.shape[:2]
 
-        # Plantes — pixel unique (couleur de l'espèce)
+        # ── Fenêtre de vue (monde → canvas) ──────────────────────────────────
+        view_w = grid_w / self._zoom
+        view_h = grid_h / self._zoom
+        # Coordonnées monde du coin haut-gauche de la vue
+        x0 = int(self._cam_x - view_w / 2)
+        y0 = int(self._cam_y - view_h / 2)
+        # Clampage aux bords de la grille
+        x0 = max(0, min(x0, grid_w - int(view_w)))
+        y0 = max(0, min(y0, grid_h - int(view_h)))
+        x1 = min(grid_w, x0 + int(view_w))
+        y1 = min(grid_h, y0 + int(view_h))
+
+        img_arr = self._terrain_base[y0:y1, x0:x1].copy()
+        vw, vh  = x1 - x0, y1 - y0  # dimensions de la vue en pixels monde
+
+        # Plantes — pixel unique
         for plant in list(self.engine.plants):
-            px, py = int(plant.x), int(plant.y)
-            if 0 <= px < w and 0 <= py < h:
+            px, py = int(plant.x) - x0, int(plant.y) - y0
+            if 0 <= px < vw and 0 <= py < vh:
                 r, g, b = [int(c * 255) for c in plant.species.color]
                 img_arr[py, px] = (r, g, b)
 
-        # Animaux — carré 3×3 pour être visibles
+        # Animaux — carré 3×3
         for ind in list(self.engine.individuals):
-            px, py = int(ind.x), int(ind.y)
+            px, py = int(ind.x) - x0, int(ind.y) - y0
             r, g, b = [int(c * 255) for c in ind.species.color]
             for dy in range(-1, 2):
                 for dx in range(-1, 2):
                     ny2, nx2 = py + dy, px + dx
-                    if 0 <= nx2 < w and 0 <= ny2 < h:
+                    if 0 <= nx2 < vw and 0 <= ny2 < vh:
                         img_arr[ny2, nx2] = (r, g, b)
 
         # Filtre jour/nuit
@@ -452,12 +482,13 @@ class SimViewer:
         # Surlignage de l'entité sélectionnée
         self.canvas.delete("highlight")
         if self._selected_eid is not None:
-            scale = CANVAS_W / self.engine.grid.width
+            scale_x = CANVAS_W / vw
+            scale_y = CANVAS_H / vh
             for e in self._entity_map:
                 if id(e) == self._selected_eid:
-                    cx = e.x * scale
-                    cy = e.y * scale
-                    r  = 7
+                    cx = (e.x - x0) * scale_x
+                    cy = (e.y - y0) * scale_y
+                    r  = 9
                     self.canvas.create_oval(
                         cx - r, cy - r, cx + r, cy + r,
                         outline="#ffffff", width=2, tags="highlight",
@@ -541,6 +572,12 @@ class SimViewer:
         tick = self.engine.tick_count
         tod  = (tick % DAY_LENGTH) / DAY_LENGTH
 
+        # Animation fluide caméra + zoom (interpolation exponentielle)
+        alpha = 0.14
+        self._zoom  += (self._zoom_t  - self._zoom)  * alpha
+        self._cam_x += (self._cam_tx - self._cam_x) * alpha
+        self._cam_y += (self._cam_ty - self._cam_y) * alpha
+
         self._render_frame(tod)
         self._update_hud(tod)
         self._update_entity_panel()
@@ -562,6 +599,19 @@ class SimViewer:
     def _set_speed(self):
         self.engine.speed = self._speed_var.get()
 
+    def _zoom_reset(self):
+        """Revient à la vue globale (dézoom animé)."""
+        self._zoom_t = 1.0
+        self._cam_tx = self.engine.grid.width  / 2
+        self._cam_ty = self.engine.grid.height / 2
+
+    def _on_canvas_click(self, _event):
+        """Clic sur le canvas → désélectionne et revient à la vue globale."""
+        self._selected_eid = None
+        self._entity_listbox.selection_clear(0, tk.END)
+        self._set_detail("Cliquez sur une entité.")
+        self._zoom_reset()
+
     def _reset(self):
         self.engine.running = False
         self.engine.reset()
@@ -569,13 +619,19 @@ class SimViewer:
             widget.destroy()
         self._pop_vars.clear()
         self._play_btn.config(text="▶  Play", bg="#1e6b2e")
-        # Réinitialiser le suivi individuel
+        # Réinitialiser le suivi individuel et la caméra
         self._selected_eid = None
         self._entity_map.clear()
         self._last_entity_count = -1
         self._entity_listbox.delete(0, tk.END)
         self._entity_count_var.set("")
         self._set_detail("Cliquez sur une entité.")
+        self._zoom = 1.0
+        self._zoom_t = 1.0
+        self._cam_x  = self.engine.grid.width  / 2
+        self._cam_y  = self.engine.grid.height / 2
+        self._cam_tx = self._cam_x
+        self._cam_ty = self._cam_y
 
     def _generate_report(self):
         filename = self.engine.generate_report()
