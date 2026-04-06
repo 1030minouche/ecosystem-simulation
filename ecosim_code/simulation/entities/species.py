@@ -31,8 +31,10 @@ def sample_params(params: dict) -> dict:
             result[key] = val
     return result
 
-def blend_species(s1: "Species", s2: "Species") -> "Species":
-    """Crée un Species dont les params variables sont la moyenne de s1 et s2.
+def blend_species(s1: "Species", s2: "Species", mutation_rate: float = 0.0) -> "Species":
+    """Crée un Species dont les params variables sont la moyenne de s1 et s2,
+    puis applique une petite perturbation gaussienne selon mutation_rate
+    (écart-type = mutation_rate × valeur moyenne, 0 = pas de mutation).
     Les params non-variables (conditions, couleur, etc.) sont hérités de s1.
     """
     kwargs = {}
@@ -40,9 +42,15 @@ def blend_species(s1: "Species", s2: "Species") -> "Species":
         v1 = getattr(s1, f.name)
         v2 = getattr(s2, f.name)
         if f.name in _VARIABLE_FLOAT:
-            kwargs[f.name] = (v1 + v2) / 2.0
+            mean = (v1 + v2) / 2.0
+            if mutation_rate > 0:
+                mean = max(0.0, random.gauss(mean, abs(mean) * mutation_rate))
+            kwargs[f.name] = mean
         elif f.name in _VARIABLE_INT:
-            kwargs[f.name] = round((v1 + v2) / 2)
+            mean = (v1 + v2) / 2.0
+            if mutation_rate > 0:
+                mean = max(0.0, random.gauss(mean, abs(mean) * mutation_rate))
+            kwargs[f.name] = max(0, round(mean))
         else:
             kwargs[f.name] = v1
     return Species(**kwargs)
@@ -109,5 +117,10 @@ class Species:
 
     # Comportement de troupeau
     herd_cohesion: float = 0.0               # 0 = solitaire, 1 = colle au groupe
+
+    # Génétique
+    mutation_rate: float = 0.0               # écart-type relatif appliqué à chaque param
+                                             # variable lors de la reproduction
+                                             # (ex: 0.05 → ±5% de chaque valeur moyenne)
                                              # lors du wander, biaise la cible vers le centroïde
                                              # des congénères proches (rayon = 2.5 × perception)
