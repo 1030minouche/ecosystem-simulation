@@ -28,6 +28,8 @@ class SimViewer:
         self.root.configure(bg="#0d0d1a")
 
         self._tk_img = None           # référence PhotoImage (évite GC)
+        self._canvas_img_id = None    # id de l'item image sur le canvas (créé une seule fois)
+        self._canvas_bg = None        # couleur de fond courante (évite configure inutile)
         self._terrain_base = None     # np.ndarray H×W×3 pré-calculé
         self._terrain_grid_id = None  # détecte changement de grille (reset)
 
@@ -611,7 +613,11 @@ class SimViewer:
         img = Image.fromarray(img_arr, "RGB")
         img = img.resize((CANVAS_W, CANVAS_H), Image.NEAREST)
         self._tk_img = ImageTk.PhotoImage(img)
-        self.canvas.create_image(0, 0, anchor=tk.NW, image=self._tk_img)
+        if self._canvas_img_id is None:
+            self._canvas_img_id = self.canvas.create_image(0, 0, anchor=tk.NW,
+                                                            image=self._tk_img)
+        else:
+            self.canvas.itemconfig(self._canvas_img_id, image=self._tk_img)
 
         # Surlignage de l'entité sélectionnée
         self.canvas.delete("highlight")
@@ -710,7 +716,10 @@ class SimViewer:
         self._update_hud(tod)
         self._update_entity_panel()
 
-        self.canvas.configure(bg=self._sky_color(tod))
+        sky = self._sky_color(tod)
+        if sky != self._canvas_bg:
+            self._canvas_bg = sky
+            self.canvas.configure(bg=sky)
         self.root.after(REFRESH_MS, self._loop)
 
     # ── Contrôles ─────────────────────────────────────────────────────────────
