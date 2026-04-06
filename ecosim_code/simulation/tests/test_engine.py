@@ -190,18 +190,26 @@ class TestInterSimulationVariability:
             assert eng.species_list[0].speed >= 0.0
 
 
-# ── Partage de l'objet Species dans une simulation ────────────────────────────
+# ── Individualisation des Species ────────────────────────────────────────────
 
 class TestSpeciesSharing:
 
-    def test_all_individuals_share_same_species_object(self):
-        """Dans une simulation, tous les individus pointent vers le même Species."""
+    def test_individuals_have_own_species_objects(self):
+        """Chaque animal a son propre objet Species (individualisation)."""
         eng = SimulationEngine(_make_grid())
         eng.add_species(_LAPIN, count=20)
-        sp = eng.species_list[0]
-        assert all(ind.species is sp for ind in eng.individuals)
+        sp_objects = [id(ind.species) for ind in eng.individuals]
+        # Tous doivent être des objets distincts
+        assert len(set(sp_objects)) == len(eng.individuals)
+
+    def test_individuals_same_species_name(self):
+        """Chaque animal a le bon nom d'espèce."""
+        eng = SimulationEngine(_make_grid())
+        eng.add_species(_LAPIN, count=10)
+        assert all(ind.species.name == "Lapin" for ind in eng.individuals)
 
     def test_all_plants_share_same_species_object(self):
+        """Les plantes partagent toujours le même objet Species (pas de reprod. sexuée)."""
         eng = SimulationEngine(_make_grid())
         eng.add_species(_HERBE, count=15)
         sp = eng.species_list[0]
