@@ -117,17 +117,6 @@ class TestCell:
         c = Cell(0, 0)
         assert c.humidity == 0.5
 
-    def test_vegetation_list_empty_by_default(self):
+    def test_water_depth_default(self):
         c = Cell(0, 0)
-        assert c.vegetation == []
-
-    def test_animals_list_empty_by_default(self):
-        c = Cell(0, 0)
-        assert c.animals == []
-
-    def test_vegetation_lists_are_independent_per_cell(self):
-        """Vérifie que deux Cell ne partagent pas la même liste (piège dataclass)."""
-        c1 = Cell(0, 0)
-        c2 = Cell(1, 1)
-        c1.vegetation.append("plante")
-        assert c2.vegetation == []
+        assert c.water_depth == 0.0

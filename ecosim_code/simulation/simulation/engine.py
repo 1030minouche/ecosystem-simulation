@@ -1,4 +1,5 @@
 import random
+import threading
 from world.grid import Grid
 from world.spatial_grid import SpatialGrid
 from entities.species import Species, sample_params
@@ -27,6 +28,7 @@ class SimulationEngine:
         self._default_counts       = {}
         self._population_overrides = {}
         self._species_raw_params   = {}   # raw params (avec *_std) par nom d'espèce
+        self.lock = threading.RLock()     # protège individuals/plants contre les accès concurrents
 
     # ── Configuration ────────────────────────────────────────────────────────
 
@@ -157,6 +159,7 @@ class SimulationEngine:
             if sp.name not in current_names and sp.name not in self._extinct:
                 self._extinct.add(sp.name)
                 self.logger.log_event(self.tick_count, f"EXTINCTION de {sp.name}")
+                self.report.record_event(self.tick_count, "extinction", sp.name)
                 print(f"[EXTINCTION] {sp.name} au tick {self.tick_count}")
 
         # ── Log + rapport toutes les 500 ticks (~10 s réels à x1) ────────────
