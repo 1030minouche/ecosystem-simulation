@@ -60,7 +60,9 @@ def blend_species(s1: "Species", s2: "Species", mutation_rate: float = 0.0) -> "
 class Species:
     # Identité
     name: str
-    type: str                    # "plant" | "herbivore" | "carnivore" | "omnivore"
+    type: str                    # "plant" | "herbivore" | "carnivore" | "omnivore" | "volant"
+                                 # "volant" : traverse l'eau librement, états en_vol/au_sol,
+                                 #            ne peut être attrapé que par d'autres volants
     color: tuple = (1.0, 1.0, 1.0)  # RGB entre 0.0 et 1.0
 
     # Conditions de survie
