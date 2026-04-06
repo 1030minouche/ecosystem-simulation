@@ -43,15 +43,26 @@ class SimulationEngine:
         # Spawn exactement `count` entités sur des cellules non-eau.
         # Chaque animal reçoit son propre tirage de paramètres individuels.
         # Les plantes partagent le template (pas de reproduction sexuée).
-        spawned   = 0
-        attempts  = 0
-        max_tries = count * 20
-        while spawned < count and attempts < max_tries:
-            x = random.randint(0, self.grid.width  - 1)
-            y = random.randint(0, self.grid.height - 1)
-            attempts += 1
-            if self.grid.cells[y][x].soil_type == "water":
-                continue
+        #
+        # On pré-calcule les cellules terrestres disponibles pour garantir
+        # un spawn correct même sur un terrain de type île (majorité d'eau).
+        can_swim = sp_template.can_swim or sp_template.type == "volant"
+        if can_swim:
+            valid_cells = [(x, y)
+                           for y in range(self.grid.height)
+                           for x in range(self.grid.width)]
+        else:
+            valid_cells = [(x, y)
+                           for y in range(self.grid.height)
+                           for x in range(self.grid.width)
+                           if self.grid.cells[y][x].soil_type != "water"]
+
+        if not valid_cells:
+            return  # aucune cellule valide (terrain entièrement eau)
+
+        spawned = 0
+        while spawned < count:
+            x, y = random.choice(valid_cells)
             if sp_template.type == "plant":
                 self.plants.append(Plant(species=sp_template, x=x, y=y))
             else:
