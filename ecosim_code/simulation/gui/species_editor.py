@@ -17,10 +17,10 @@ from typing import Optional
 SPECIES_DIR = Path(__file__).parent.parent / "species"
 
 # ── Constantes ────────────────────────────────────────────────────────────────
-TYPES            = ["plant", "herbivore", "carnivore", "omnivore"]
+TYPES            = ["plant", "herbivore", "carnivore", "omnivore", "volant"]
 ACTIVITY_PATTERNS = ["diurnal", "crepuscular", "nocturnal"]
 ACTIVITY_LABELS   = {"diurnal": "Diurne", "crepuscular": "Crépusculaire", "nocturnal": "Nocturne"}
-TYPE_EMOJI        = {"plant": "🌿", "herbivore": "🐾", "carnivore": "🦊", "omnivore": "⚙", "": "❓"}
+TYPE_EMOJI        = {"plant": "🌿", "herbivore": "🐾", "carnivore": "🦊", "omnivore": "⚙", "volant": "🦅", "": "❓"}
 
 DAY_TICKS = 1_200   # ticks par jour simulé (1 min réelle à ×1)
 
