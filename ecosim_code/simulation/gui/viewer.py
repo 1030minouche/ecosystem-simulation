@@ -6,6 +6,7 @@ Affiche le terrain coloré par altitude et les entités sous forme de pixels/car
 import tkinter as tk
 from tkinter import font as tkfont
 import math
+import time
 import numpy as np
 from PIL import Image, ImageTk
 
@@ -39,6 +40,8 @@ class SimViewer:
         self._selected_card_idx  = None  # index dans _entity_map
         self._entity_map         = []    # list[entity] parallèle aux cartes
         self._last_entity_count  = -1
+        self._last_rebuild_time  = 0.0   # timestamp du dernier rebuild des cartes
+        self._last_detail_time   = 0.0   # timestamp du dernier update du détail
 
         # Caméra et zoom (animés par interpolation exponentielle)
         self._zoom    = 1.0
@@ -507,12 +510,15 @@ class SimViewer:
                 self._zoom_reset()
 
         total = len(self._snap_individuals) + len(self._snap_plants)
-        if total != self._last_entity_count:
+        now   = time.monotonic()
+        if total != self._last_entity_count and (now - self._last_rebuild_time) >= 0.5:
             self._last_entity_count = total
+            self._last_rebuild_time = now
             self._rebuild_entity_list()
 
-        # Mise à jour temps réel du détail + caméra
-        if self._selected_eid is not None:
+        # Mise à jour temps réel du détail + caméra (throttlé à 4 fps)
+        if self._selected_eid is not None and (now - self._last_detail_time) >= 0.25:
+            self._last_detail_time = now
             for e in self._entity_map:
                 if id(e) == self._selected_eid:
                     self._show_entity_detail(e)
