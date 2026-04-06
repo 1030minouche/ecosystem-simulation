@@ -124,7 +124,7 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
         elif self.state == "reproduce":
             newborns.extend(self._try_reproduce(all_individuals, grid))
         else:
-            self._wander(grid)
+            self._wander(grid, nearby_inds=all_individuals)
 
         self.x = max(0, min(grid.width  - 1, self.x))
         self.y = max(0, min(grid.height - 1, self.y))
