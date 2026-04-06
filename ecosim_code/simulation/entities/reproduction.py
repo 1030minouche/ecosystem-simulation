@@ -12,6 +12,7 @@ import math
 import random
 
 from entities.activity import TICKS_PER_SECOND
+from entities.species import blend_species
 
 
 class ReproductionMixin:
@@ -19,6 +20,7 @@ class ReproductionMixin:
     # ── Délivrance des petits (fin de gestation) ──────────────────────────────
 
     def _deliver(self, grid) -> list:
+        baby_sp = self.gestation_species or self.species
         babies = []
         for _ in range(self.gestation_count):
             bx = self.x + random.uniform(-2, 2)
@@ -29,13 +31,14 @@ class ReproductionMixin:
                         and grid.cells[iby][ibx].soil_type == "water"):
                     bx, by = self.x, self.y
             babies.append(type(self)(
-                species=self.species,
+                species=baby_sp,
                 x=bx, y=by,
-                energy=self.species.energy_start * 0.5,
+                energy=baby_sp.energy_start * 0.5,
                 sex=random.choice(["male", "female"]),
                 wander_angle=random.uniform(0, 2 * math.pi),
             ))
-        self.gestation_count = 0
+        self.gestation_count   = 0
+        self.gestation_species = None
         return babies
 
     # ── Tentative de reproduction ─────────────────────────────────────────────
@@ -103,10 +106,14 @@ class ReproductionMixin:
         self.energy              -= cost
         nearest_partner.energy   -= cost
 
+        # Params du bébé = moyenne des deux parents
+        baby_sp = blend_species(self.species, nearest_partner.species)
+
         if self.species.gestation_ticks > 0:
             # Gestation différée : les bébés naîtront plus tard
-            self.gestation_timer = self.species.gestation_ticks
-            self.gestation_count = litter
+            self.gestation_timer   = self.species.gestation_ticks
+            self.gestation_count   = litter
+            self.gestation_species = baby_sp
             nearest_partner.reproduction_cooldown = self.species.reproduction_cooldown_length
             return []
         else:
@@ -121,12 +128,12 @@ class ReproductionMixin:
                             and grid.cells[iby][ibx].soil_type == "water"):
                         bx, by = self.x, self.y
                 newborns.append(type(self)(
-                    species=self.species,
+                    species=baby_sp,
                     x=bx, y=by,
-                    energy=self.species.energy_start * 0.6,
+                    energy=baby_sp.energy_start * 0.6,
                     sex=random.choice(["male", "female"]),
                     wander_angle=random.uniform(0, 2 * math.pi),
                 ))
-            self.reproduction_cooldown          = self.species.reproduction_cooldown_length
+            self.reproduction_cooldown            = self.species.reproduction_cooldown_length
             nearest_partner.reproduction_cooldown = self.species.reproduction_cooldown_length
             return newborns
