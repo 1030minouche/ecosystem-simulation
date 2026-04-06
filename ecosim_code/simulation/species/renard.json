@@ -3,7 +3,11 @@
   "params": {
     "name": "Renard",
     "type": "omnivore",
-    "color": [0.8, 0.4, 0.1],
+    "color": [
+      0.8,
+      0.4,
+      0.1
+    ],
     "temp_min": -15.0,
     "temp_max": 38.0,
     "humidity_min": 0.1,
@@ -25,7 +29,10 @@
     "speed_std": 0.2,
     "perception_radius": 18.0,
     "perception_radius_std": 1.5,
-    "food_sources": ["Lapin", "Baies"],
+    "food_sources": [
+      "Lapin",
+      "Baies"
+    ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,
     "dispersal_radius": 0,
@@ -43,6 +50,8 @@
     "juvenile_mortality_rate_std": 1e-06,
     "fear_factor": 0.0,
     "fear_factor_std": 0.0,
-    "herd_cohesion": 0.1
+    "herd_cohesion": 0.1,
+    "territory_radius": 40.0,
+    "home_protection": 0.2
   }
 }

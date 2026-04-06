@@ -3,13 +3,17 @@
   "params": {
     "name": "Cerf",
     "type": "herbivore",
-    "color": [0.65, 0.42, 0.18],
+    "color": [
+      0.65,
+      0.42,
+      0.18
+    ],
     "temp_min": -5.0,
     "temp_max": 32.0,
     "humidity_min": 0.2,
     "humidity_max": 0.9,
-    "altitude_min": 0.30,
-    "altitude_max": 0.80,
+    "altitude_min": 0.3,
+    "altitude_max": 0.8,
     "reproduction_rate": 0.75,
     "reproduction_rate_std": 0.05,
     "max_age": 3504000,
@@ -25,7 +29,11 @@
     "speed_std": 0.15,
     "perception_radius": 15.0,
     "perception_radius_std": 1.5,
-    "food_sources": ["Herbe", "Baies", "Fougere"],
+    "food_sources": [
+      "Herbe",
+      "Baies",
+      "Fougere"
+    ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,
     "dispersal_radius": 0,
@@ -43,6 +51,8 @@
     "juvenile_mortality_rate_std": 8e-07,
     "fear_factor": 2.5,
     "fear_factor_std": 0.3,
-    "herd_cohesion": 0.75
+    "herd_cohesion": 0.75,
+    "territory_radius": 50.0,
+    "home_protection": 0.2
   }
 }

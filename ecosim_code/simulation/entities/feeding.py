@@ -7,6 +7,7 @@ Fonctionne pour les herbivores (cibles : plantes), les carnivores
 """
 
 import math
+import random
 
 from entities.activity import TICKS_PER_SECOND
 
@@ -49,8 +50,19 @@ class FeedingMixin:
             self.x += (dx / dist) * step
             self.y += (dy / dist) * step
             if dist < 1.5:
-                target.alive = False
-                self.energy = min(self.species.energy_start,
-                                  self.energy + self.species.energy_from_food)
+                # Protection territoriale : la proie peut échapper si elle est chez elle
+                caught = True
+                if (hasattr(target, 'home_x') and target.home_x >= 0
+                        and target.species.territory_radius > 0
+                        and target.species.home_protection > 0):
+                    dhx = target.x - target.home_x
+                    dhy = target.y - target.home_y
+                    if dhx*dhx + dhy*dhy <= target.species.territory_radius ** 2:
+                        if random.random() < target.species.home_protection:
+                            caught = False  # la proie connaît les refuges
+                if caught:
+                    target.alive = False
+                    self.energy = min(self.species.energy_start,
+                                      self.energy + self.species.energy_from_food)
         else:
             self._wander(grid)

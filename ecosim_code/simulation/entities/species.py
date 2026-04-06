@@ -111,3 +111,9 @@ class Species:
     herd_cohesion: float = 0.0               # 0 = solitaire, 1 = colle au groupe
                                              # lors du wander, biaise la cible vers le centroïde
                                              # des congénères proches (rayon = 2.5 × perception)
+
+    # Territoire / habitat
+    territory_radius: float = 0.0            # rayon du territoire autour du lieu de naissance
+                                             # (0 = pas de territoire)
+    home_protection: float = 0.0             # probabilité d'échapper à un prédateur quand
+                                             # l'animal est dans son territoire (0-1)
