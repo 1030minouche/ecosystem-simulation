@@ -1,4 +1,5 @@
 import random
+import threading
 from world.grid import Grid
 from world.spatial_grid import SpatialGrid
 from entities.species import Species, sample_params
@@ -23,9 +24,11 @@ class SimulationEngine:
         self.report    = SimulationReport()
         self.logger    = SimulationLogger()
         self.death_log = DeathLogger()
-        self._extinct             = set()
-        self._default_counts      = {}
+        self._extinct              = set()
+        self._default_counts       = {}
         self._population_overrides = {}
+        self._species_raw_params   = {}   # raw params (avec *_std) par nom d'espèce
+        self.lock = threading.RLock()     # protège individuals/plants contre les accès concurrents
 
     # ── Configuration ────────────────────────────────────────────────────────
 
@@ -33,28 +36,45 @@ class SimulationEngine:
         self._population_overrides = {k: max(0, int(v)) for k, v in counts.items()}
 
     def add_species(self, species_data: dict, count: int = 20):
-        sp = Species(**sample_params(species_data))
-        self._default_counts[sp.name] = count
-        self.species_list.append(sp)
+        # Template (un tirage pour l'identité dans species_list)
+        sp_template = Species(**sample_params(species_data))
+        self._default_counts[sp_template.name] = count
+        self._species_raw_params[sp_template.name] = species_data
+        self.species_list.append(sp_template)
 
-        # Spawn exactement `count` entités sur des cellules non-eau
-        spawned   = 0
-        attempts  = 0
-        max_tries = count * 20
-        while spawned < count and attempts < max_tries:
-            x = random.randint(0, self.grid.width  - 1)
-            y = random.randint(0, self.grid.height - 1)
-            attempts += 1
-            if self.grid.cells[y][x].soil_type == "water":
-                continue
-            if sp.type == "plant":
-                self.plants.append(Plant(species=sp, x=x, y=y))
+        # Spawn exactement `count` entités sur des cellules non-eau.
+        # Chaque animal reçoit son propre tirage de paramètres individuels.
+        # Les plantes partagent le template (pas de reproduction sexuée).
+        #
+        # On pré-calcule les cellules terrestres disponibles pour garantir
+        # un spawn correct même sur un terrain de type île (majorité d'eau).
+        can_swim = sp_template.can_swim or sp_template.type == "volant"
+        if can_swim:
+            valid_cells = [(x, y)
+                           for y in range(self.grid.height)
+                           for x in range(self.grid.width)]
+        else:
+            valid_cells = [(x, y)
+                           for y in range(self.grid.height)
+                           for x in range(self.grid.width)
+                           if self.grid.cells[y][x].soil_type != "water"]
+
+        if not valid_cells:
+            return  # aucune cellule valide (terrain entièrement eau)
+
+        spawned = 0
+        while spawned < count:
+            x, y = random.choice(valid_cells)
+            if sp_template.type == "plant":
+                self.plants.append(Plant(species=sp_template, x=x, y=y))
             else:
+                sp_ind = Species(**sample_params(species_data))
                 self.individuals.append(Individual(
-                    species=sp, x=x, y=y,
-                    energy=sp.energy_start * random.uniform(0.5, 1.0),
+                    species=sp_ind, x=x, y=y,
+                    energy=sp_ind.energy_start * random.uniform(0.5, 1.0),
                     sex=random.choice(["male", "female"]),
-                    age=random.randint(0, sp.max_age // 2),
+                    age=random.randint(0, sp_ind.max_age // 2),
+                    home_x=float(x), home_y=float(y),
                 ))
             spawned += 1
 
@@ -139,6 +159,7 @@ class SimulationEngine:
             if sp.name not in current_names and sp.name not in self._extinct:
                 self._extinct.add(sp.name)
                 self.logger.log_event(self.tick_count, f"EXTINCTION de {sp.name}")
+                self.report.record_event(self.tick_count, "extinction", sp.name)
                 print(f"[EXTINCTION] {sp.name} au tick {self.tick_count}")
 
         # ── Log + rapport toutes les 500 ticks (~10 s réels à x1) ────────────
@@ -177,34 +198,14 @@ class SimulationEngine:
 
         saved_defaults  = dict(self._default_counts)
         saved_overrides = dict(self._population_overrides)
-        species_backup  = self.species_list.copy()
-        self.species_list    = []
-        self._default_counts = {}
+        saved_raw       = dict(self._species_raw_params)
+        self.species_list        = []
+        self._default_counts     = {}
+        self._species_raw_params = {}
 
-        for sp in species_backup:
-            count = saved_overrides.get(sp.name, saved_defaults.get(sp.name, 20))
-            self.add_species({
-                "name": sp.name, "type": sp.type, "color": sp.color,
-                "temp_min": sp.temp_min, "temp_max": sp.temp_max,
-                "humidity_min": sp.humidity_min, "humidity_max": sp.humidity_max,
-                "altitude_min": sp.altitude_min, "altitude_max": sp.altitude_max,
-                "reproduction_rate": sp.reproduction_rate, "max_age": sp.max_age,
-                "max_population": sp.max_population, "energy_start": sp.energy_start,
-                "energy_consumption": sp.energy_consumption,
-                "energy_from_food": sp.energy_from_food, "speed": sp.speed,
-                "perception_radius": sp.perception_radius,
-                "food_sources": sp.food_sources, "growth_rate": sp.growth_rate,
-                "dispersal_radius": sp.dispersal_radius,
-                "activity_pattern": sp.activity_pattern,
-                "can_swim": sp.can_swim,
-                "reproduction_cooldown_length": sp.reproduction_cooldown_length,
-                "litter_size_min": sp.litter_size_min,
-                "litter_size_max": sp.litter_size_max,
-                "sexual_maturity_ticks": sp.sexual_maturity_ticks,
-                "gestation_ticks": sp.gestation_ticks,
-                "juvenile_mortality_rate": sp.juvenile_mortality_rate,
-                "fear_factor": sp.fear_factor,
-            }, count=count)
+        for name, raw in saved_raw.items():
+            count = saved_overrides.get(name, saved_defaults.get(name, 20))
+            self.add_species(raw, count=count)
 
         self._population_overrides = saved_overrides
         print("Simulation reinitialisee")

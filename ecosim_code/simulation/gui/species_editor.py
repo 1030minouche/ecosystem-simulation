@@ -17,10 +17,10 @@ from typing import Optional
 SPECIES_DIR = Path(__file__).parent.parent / "species"
 
 # ── Constantes ────────────────────────────────────────────────────────────────
-TYPES            = ["plant", "herbivore", "carnivore", "omnivore"]
+TYPES            = ["plant", "herbivore", "carnivore", "omnivore", "volant"]
 ACTIVITY_PATTERNS = ["diurnal", "crepuscular", "nocturnal"]
 ACTIVITY_LABELS   = {"diurnal": "Diurne", "crepuscular": "Crépusculaire", "nocturnal": "Nocturne"}
-TYPE_EMOJI        = {"plant": "🌿", "herbivore": "🐾", "carnivore": "🦊", "omnivore": "⚙", "": "❓"}
+TYPE_EMOJI        = {"plant": "🌿", "herbivore": "🐾", "carnivore": "🦊", "omnivore": "⚙", "volant": "🦅", "": "❓"}
 
 DAY_TICKS = 1_200   # ticks par jour simulé (1 min réelle à ×1)
 
@@ -58,6 +58,7 @@ DEFAULTS: dict = {
         "gestation_ticks": 0,           "gestation_ticks_std": 0,
         "juvenile_mortality_rate": 0.0, "juvenile_mortality_rate_std": 0.0,
         "fear_factor": 0.0,             "fear_factor_std": 0.0,
+        "herd_cohesion": 0.0,
     },
 }
 
@@ -444,10 +445,15 @@ class SpeciesEditor:
                ).pack(side=tk.LEFT, padx=(8, 0))
 
         chk_row = tk.Frame(self.sec_animal, bg=C["base"])
-        chk_row.pack(fill=tk.X, padx=10, pady=(2, 8))
+        chk_row.pack(fill=tk.X, padx=10, pady=(2, 4))
         tk.Label(chk_row, text="", width=26, bg=C["base"]).pack(side=tk.LEFT)
         self.v_can_swim = tk.BooleanVar()
         ttk.Checkbutton(chk_row, text="Peut nager", variable=self.v_can_swim).pack(side=tk.LEFT)
+
+        self.v_herd_cohesion = tk.StringVar()
+        field_row(self.sec_animal, "Cohésion troupeau",
+                  self.v_herd_cohesion,
+                  hint="(0 = solitaire · 1 = colle au groupe)")
 
         # ── Section plantes ───────────────────────────────────────────────────
         self.sec_plant = section("Comportement — Plantes")
@@ -549,6 +555,7 @@ class SpeciesEditor:
         self.v_juv_mort_std.set(        str(p.get("juvenile_mortality_rate_std",       0.0)))
         self.v_fear_factor.set(         str(p.get("fear_factor",                       0.0)))
         self.v_fear_factor_std.set(     str(p.get("fear_factor_std",                   0.0)))
+        self.v_herd_cohesion.set(       str(p.get("herd_cohesion",                     0.0)))
 
         self.v_nrj_start.set(    str(p.get("energy_start",          100.0)))
         self.v_nrj_start_std.set(str(p.get("energy_start_std",        0.0)))
@@ -719,6 +726,7 @@ class SpeciesEditor:
                 "juvenile_mortality_rate_std":       f(self.v_juv_mort_std),
                 "fear_factor":                       f(self.v_fear_factor),
                 "fear_factor_std":                   f(self.v_fear_factor_std),
+                "herd_cohesion":                     f(self.v_herd_cohesion),
             },
         }
 
@@ -776,6 +784,7 @@ class SpeciesEditor:
         chk_float(self.v_juv_mort_std,         "σ Mortalité juvénile",       0.0)
         chk_float(self.v_fear_factor,          "Facteur de peur",            0.0)
         chk_float(self.v_fear_factor_std,      "σ Facteur de peur",          0.0)
+        chk_float(self.v_herd_cohesion,        "Cohésion troupeau",          0.0, 1.0)
         chk_int(self.v_count,                  "Count initial",               0)
         chk_int(self.v_max_pop,                "Population max",              1)
         chk_int(self.v_max_age,                "Âge max",                     1)

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields as dc_fields
 from typing import List
 import random
 
@@ -31,11 +31,38 @@ def sample_params(params: dict) -> dict:
             result[key] = val
     return result
 
+def blend_species(s1: "Species", s2: "Species", mutation_rate: float = 0.0) -> "Species":
+    """Crée un Species dont les params variables sont la moyenne de s1 et s2,
+    puis applique une petite perturbation gaussienne selon mutation_rate
+    (écart-type = mutation_rate × valeur moyenne, 0 = pas de mutation).
+    Les params non-variables (conditions, couleur, etc.) sont hérités de s1.
+    """
+    kwargs = {}
+    for f in dc_fields(s1):
+        v1 = getattr(s1, f.name)
+        v2 = getattr(s2, f.name)
+        if f.name in _VARIABLE_FLOAT:
+            mean = (v1 + v2) / 2.0
+            if mutation_rate > 0:
+                mean = max(0.0, random.gauss(mean, abs(mean) * mutation_rate))
+            kwargs[f.name] = mean
+        elif f.name in _VARIABLE_INT:
+            mean = (v1 + v2) / 2.0
+            if mutation_rate > 0:
+                mean = max(0.0, random.gauss(mean, abs(mean) * mutation_rate))
+            kwargs[f.name] = max(0, round(mean))
+        else:
+            kwargs[f.name] = v1
+    return Species(**kwargs)
+
+
 @dataclass
 class Species:
     # Identité
     name: str
-    type: str                    # "plant" | "herbivore" | "carnivore" | "omnivore"
+    type: str                    # "plant" | "herbivore" | "carnivore" | "omnivore" | "volant"
+                                 # "volant" : traverse l'eau librement, états en_vol/au_sol,
+                                 #            ne peut être attrapé que par d'autres volants
     color: tuple = (1.0, 1.0, 1.0)  # RGB entre 0.0 et 1.0
 
     # Conditions de survie
@@ -89,3 +116,19 @@ class Species:
     juvenile_mortality_rate: float = 0.0     # probabilité de mort/tick pour les juvéniles
     fear_factor: float = 0.0                 # réduction du taux de reprod. par prédateur proche
                                              # formule : rate / (1 + fear_factor × n_predateurs)
+
+    # Comportement de troupeau
+    herd_cohesion: float = 0.0               # 0 = solitaire, 1 = colle au groupe
+
+    # Génétique
+    mutation_rate: float = 0.0               # écart-type relatif appliqué à chaque param
+                                             # variable lors de la reproduction
+                                             # (ex: 0.05 → ±5% de chaque valeur moyenne)
+                                             # lors du wander, biaise la cible vers le centroïde
+                                             # des congénères proches (rayon = 2.5 × perception)
+
+    # Territoire / habitat
+    territory_radius: float = 0.0            # rayon du territoire autour du lieu de naissance
+                                             # (0 = pas de territoire)
+    home_protection: float = 0.0             # probabilité d'échapper à un prédateur quand
+                                             # l'animal est dans son territoire (0-1)

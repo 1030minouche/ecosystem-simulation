@@ -18,19 +18,21 @@ class MovementMixin:
 
     # ── Exploration ───────────────────────────────────────────────────────────
 
-    def _wander(self, grid, speed_factor: float = 1.0):
+    def _wander(self, grid, speed_factor: float = 1.0, nearby_inds=None):
         dx = self.explore_x - self.x
         dy = self.explore_y - self.y
 
+        flies = self.species.type == "volant"
+
         need_new = self.explore_x < 0 or (dx*dx + dy*dy) < 4.0
-        if not need_new and not self.species.can_swim:
+        if not need_new and not self.species.can_swim and not flies:
             tx, ty = int(self.explore_x), int(self.explore_y)
             if (0 <= tx < grid.width and 0 <= ty < grid.height
                     and grid.cells[ty][tx].soil_type == "water"):
                 need_new = True
 
         if need_new:
-            if self.species.can_swim:
+            if self.species.can_swim or flies:
                 self.explore_x = random.uniform(2, grid.width  - 3)
                 self.explore_y = random.uniform(2, grid.height - 3)
             else:
@@ -43,13 +45,36 @@ class MovementMixin:
                 else:
                     self.explore_x = random.uniform(2, grid.width  - 3)
                     self.explore_y = random.uniform(2, grid.height - 3)
-            dx = self.explore_x - self.x
-            dy = self.explore_y - self.y
 
+        # ── Cohésion de troupeau ──────────────────────────────────────────────
+        # Biaise la cible d'exploration vers le centroïde des congénères proches.
+        if nearby_inds is not None and self.species.herd_cohesion > 0:
+            r2 = (self.species.perception_radius * 2.5) ** 2
+            sx, sy, cnt = 0.0, 0.0, 0
+            for other in nearby_inds:
+                if other is self or not other.alive:
+                    continue
+                if other.species.name != self.species.name:
+                    continue
+                ddx = other.x - self.x
+                ddy = other.y - self.y
+                if ddx * ddx + ddy * ddy <= r2:
+                    sx += other.x
+                    sy += other.y
+                    cnt += 1
+            if cnt > 0:
+                c = self.species.herd_cohesion
+                self.explore_x = (1.0 - c) * self.explore_x + c * (sx / cnt)
+                self.explore_y = (1.0 - c) * self.explore_y + c * (sy / cnt)
+
+        dx = self.explore_x - self.x
+        dy = self.explore_y - self.y
         target_angle = math.atan2(dy, dx)
         angle_diff = (target_angle - self.wander_angle + math.pi) % (2 * math.pi) - math.pi
         self.wander_angle += angle_diff * 0.3 + random.uniform(-0.15, 0.15)
-        step = self.species.speed / TICKS_PER_SECOND * speed_factor
+        # Les volants en vol bénéficient d'un bonus de vitesse (+40%)
+        air_bonus = 1.4 if self.species.type == "volant" and self.state == "en_vol" else 1.0
+        step = self.species.speed / TICKS_PER_SECOND * speed_factor * air_bonus
         self.x += math.cos(self.wander_angle) * step
         self.y += math.sin(self.wander_angle) * step
 

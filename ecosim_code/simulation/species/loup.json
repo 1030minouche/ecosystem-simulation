@@ -3,7 +3,11 @@
   "params": {
     "name": "Loup",
     "type": "carnivore",
-    "color": [0.52, 0.52, 0.58],
+    "color": [
+      0.52,
+      0.52,
+      0.58
+    ],
     "temp_min": -20.0,
     "temp_max": 35.0,
     "humidity_min": 0.1,
@@ -25,7 +29,10 @@
     "speed_std": 0.2,
     "perception_radius": 22.0,
     "perception_radius_std": 2.0,
-    "food_sources": ["Lapin", "Cerf"],
+    "food_sources": [
+      "Lapin",
+      "Cerf"
+    ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,
     "dispersal_radius": 0,
@@ -42,6 +49,10 @@
     "juvenile_mortality_rate": 5e-06,
     "juvenile_mortality_rate_std": 1e-06,
     "fear_factor": 0.0,
-    "fear_factor_std": 0.0
+    "fear_factor_std": 0.0,
+    "herd_cohesion": 0.6,
+    "mutation_rate": 0.05,
+    "territory_radius": 80.0,
+    "home_protection": 0.15
   }
 }
