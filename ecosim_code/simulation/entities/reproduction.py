@@ -106,8 +106,9 @@ class ReproductionMixin:
         self.energy              -= cost
         nearest_partner.energy   -= cost
 
-        # Params du bébé = moyenne des deux parents
-        baby_sp = blend_species(self.species, nearest_partner.species)
+        # Params du bébé = moyenne des deux parents + légère mutation
+        baby_sp = blend_species(self.species, nearest_partner.species,
+                                mutation_rate=self.species.mutation_rate)
 
         if self.species.gestation_ticks > 0:
             # Gestation différée : les bébés naîtront plus tard
