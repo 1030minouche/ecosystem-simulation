@@ -26,6 +26,10 @@ class SimViewer:
         self._terrain_base = None     # np.ndarray H×W×3 pré-calculé
         self._terrain_grid_id = None  # détecte changement de grille (reset)
 
+        # Snapshots thread-safe (mis à jour une fois par frame sous engine.lock)
+        self._snap_plants      = []
+        self._snap_individuals = []
+
         # Suivi individuel
         self._selected_eid      = None   # id() de l'entité sélectionnée
         self._entity_map        = []     # list[entity] parallèle au listbox
@@ -263,8 +267,8 @@ class SimViewer:
 
         # Animaux d'abord (plus intéressants), puis plantes
         entities = (
-            sorted(self.engine.individuals, key=lambda e: (e.species.name, e.x)) +
-            sorted(self.engine.plants,      key=lambda e: (e.species.name, e.x))
+            sorted(self._snap_individuals, key=lambda e: (e.species.name, e.x)) +
+            sorted(self._snap_plants,      key=lambda e: (e.species.name, e.x))
         )
 
         new_sel_idx = None
@@ -283,8 +287,8 @@ class SimViewer:
         else:
             lb.yview_moveto(yview)
 
-        n_a = len(self.engine.individuals)
-        n_p = len(self.engine.plants)
+        n_a = len(self._snap_individuals)
+        n_p = len(self._snap_plants)
         self._entity_count_var.set(f"{n_a} animaux · {n_p} plantes")
 
     def _on_entity_select(self, _event):
@@ -347,8 +351,8 @@ class SimViewer:
         # Vérifie si l'entité sélectionnée est encore dans la simulation
         if self._selected_eid is not None:
             current_ids = (
-                {id(e) for e in self.engine.individuals} |
-                {id(e) for e in self.engine.plants}
+                {id(e) for e in self._snap_individuals} |
+                {id(e) for e in self._snap_plants}
             )
             if self._selected_eid not in current_ids:
                 self._selected_eid = None
@@ -356,7 +360,7 @@ class SimViewer:
                 self._set_detail("Entité disparue.")
                 self._zoom_reset()
 
-        total = len(self.engine.individuals) + len(self.engine.plants)
+        total = len(self._snap_individuals) + len(self._snap_plants)
         if total != self._last_entity_count:
             self._last_entity_count = total
             self._rebuild_entity_list()
@@ -455,14 +459,14 @@ class SimViewer:
         vw, vh  = x1 - x0, y1 - y0  # dimensions de la vue en pixels monde
 
         # Plantes — pixel unique
-        for plant in list(self.engine.plants):
+        for plant in self._snap_plants:
             px, py = int(plant.x) - x0, int(plant.y) - y0
             if 0 <= px < vw and 0 <= py < vh:
                 r, g, b = [int(c * 255) for c in plant.species.color]
                 img_arr[py, px] = (r, g, b)
 
         # Animaux — carré 3×3
-        for ind in list(self.engine.individuals):
+        for ind in self._snap_individuals:
             px, py = int(ind.x) - x0, int(ind.y) - y0
             r, g, b = [int(c * 255) for c in ind.species.color]
             for dy in range(-1, 2):
@@ -516,9 +520,9 @@ class SimViewer:
 
         # Populations
         counts = {}
-        for p in list(self.engine.plants):
+        for p in self._snap_plants:
             counts[p.species.name] = counts.get(p.species.name, 0) + 1
-        for i in list(self.engine.individuals):
+        for i in self._snap_individuals:
             counts[i.species.name] = counts.get(i.species.name, 0) + 1
 
         for sp in self.engine.species_list:
@@ -569,7 +573,10 @@ class SimViewer:
 
     def _loop(self):
         from simulation.engine import DAY_LENGTH
-        tick = self.engine.tick_count
+        with self.engine.lock:
+            tick                   = self.engine.tick_count
+            self._snap_plants      = list(self.engine.plants)
+            self._snap_individuals = list(self.engine.individuals)
         tod  = (tick % DAY_LENGTH) / DAY_LENGTH
 
         # Animation fluide caméra + zoom (interpolation exponentielle)
@@ -614,7 +621,8 @@ class SimViewer:
 
     def _reset(self):
         self.engine.running = False
-        self.engine.reset()
+        with self.engine.lock:
+            self.engine.reset()
         for widget in self._pop_frame.winfo_children():
             widget.destroy()
         self._pop_vars.clear()

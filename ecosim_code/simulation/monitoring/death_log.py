@@ -1,5 +1,6 @@
 import csv
 import os
+from datetime import datetime
 
 class DeathLogger:
     """Enregistre chaque mort d'individu dans un CSV pour analyse post-mortem."""
@@ -7,8 +8,10 @@ class DeathLogger:
     FIELDS = ["tick", "species", "age", "energy", "x", "y",
               "state", "time_of_day", "is_night", "on_water", "cause"]
 
-    def __init__(self, filepath: str = "reports/death_log.csv"):
+    def __init__(self):
         os.makedirs("reports", exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = f"reports/death_log_{ts}.csv"
         self._file   = open(filepath, "w", newline="", encoding="utf-8")
         self._writer = csv.writer(self._file)
         self._writer.writerow(self.FIELDS)

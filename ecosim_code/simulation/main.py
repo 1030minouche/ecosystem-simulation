@@ -48,8 +48,9 @@ TICK_INTERVAL = 0.050   # 50 ms entre chaque batch → 20 fps de simulation à �
 def _sim_loop():
     while True:
         if engine.running:
-            for _ in range(engine.speed):
-                engine.tick()
+            with engine.lock:
+                for _ in range(engine.speed):
+                    engine.tick()
         time.sleep(TICK_INTERVAL)
 
 threading.Thread(target=_sim_loop, daemon=True).start()
