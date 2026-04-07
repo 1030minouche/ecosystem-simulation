@@ -27,11 +27,20 @@ class SimViewer:
         self.root.resizable(False, False)
         self.root.configure(bg="#0d0d1a")
 
-        self._tk_img = None           # référence PhotoImage (évite GC)
-        self._canvas_img_id = None    # id de l'item image sur le canvas (créé une seule fois)
-        self._canvas_bg = None        # couleur de fond courante (évite configure inutile)
-        self._terrain_base = None     # np.ndarray H×W×3 pré-calculé
-        self._terrain_grid_id = None  # détecte changement de grille (reset)
+        self._tk_img = None              # référence PhotoImage terrain (évite GC)
+        self._canvas_img_id = None       # item image terrain sur le canvas
+        self._canvas_bg = None           # couleur de fond courante
+        self._terrain_base = None        # np.ndarray H×W×3 pré-calculé
+        self._terrain_grid_id = None     # détecte changement de grille
+
+        # Cache terrain : recalcul uniquement si la vue ou l'éclairage change
+        self._last_cam_key   = None      # (cam_x_r, cam_y_r, zoom_r, tod_bucket)
+
+        # Items canvas entités : entity_id → (canvas_item_id, hex_color)
+        self._entity_canvas_items: dict = {}
+
+        # Item canvas du highlight de sélection (créé une seule fois)
+        self._highlight_item = None
 
         # Snapshots thread-safe (mis à jour quand le verrou est disponible)
         self._snap_tick        = 0
@@ -580,9 +589,11 @@ class SimViewer:
     def _render_frame(self, tod: float):
         if id(self.engine.grid) != self._terrain_grid_id:
             self._build_terrain_base()
+            self._last_cam_key = None   # force re-rendu du terrain
 
         grid_h, grid_w = self._terrain_base.shape[:2]
 
+        # ── Fenêtre de vue (coords monde) ────────────────────────────────────
         view_w = grid_w / self._zoom
         view_h = grid_h / self._zoom
         x0 = int(self._cam_x - view_w / 2)
@@ -591,50 +602,97 @@ class SimViewer:
         y0 = max(0, min(y0, grid_h - int(view_h)))
         x1 = min(grid_w, x0 + int(view_w))
         y1 = min(grid_h, y0 + int(view_h))
+        vw, vh = x1 - x0, y1 - y0
 
-        img_arr = self._terrain_base[y0:y1, x0:x1].copy()
-        vw, vh  = x1 - x0, y1 - y0
+        scale_x = CANVAS_W / max(vw, 1)
+        scale_y = CANVAS_H / max(vh, 1)
+
+        # ── Terrain : recalculé uniquement si vue ou éclairage a changé ──────
+        # tod_bucket : mise à jour toutes les ~1 min simulées (indétectable à l'œil)
+        tod_bucket = int(tod * 72)   # 72 tranches par jour = 20 min simulées chacune
+        cam_key = (x0, y0, x1, y1, tod_bucket)
+        if cam_key != self._last_cam_key:
+            self._last_cam_key = cam_key
+            img_arr = self._day_night_filter(self._terrain_base[y0:y1, x0:x1], tod)
+            img = Image.fromarray(img_arr, "RGB")
+            img = img.resize((CANVAS_W, CANVAS_H), Image.NEAREST)
+            self._tk_img = ImageTk.PhotoImage(img)
+            if self._canvas_img_id is None:
+                self._canvas_img_id = self.canvas.create_image(
+                    0, 0, anchor=tk.NW, image=self._tk_img)
+            else:
+                self.canvas.itemconfig(self._canvas_img_id, image=self._tk_img)
+
+        # ── Entités : items canvas mis à jour par coords() — pas de PIL ──────
+        alive_ids: set = set()
 
         for plant in self._snap_plants:
-            px, py = int(plant.x) - x0, int(plant.y) - y0
-            if 0 <= px < vw and 0 <= py < vh:
+            eid = id(plant)
+            alive_ids.add(eid)
+            cx = (plant.x - x0) * scale_x
+            cy = (plant.y - y0) * scale_y
+            visible = 0 <= cx < CANVAS_W and 0 <= cy < CANVAS_H
+            if eid not in self._entity_canvas_items:
                 r, g, b = [int(c * 255) for c in plant.species.color]
-                img_arr[py, px] = (r, g, b)
+                col = f"#{r:02x}{g:02x}{b:02x}"
+                item = self.canvas.create_rectangle(
+                    cx, cy, cx + scale_x, cy + scale_y,
+                    fill=col, outline="", tags="entity")
+                self._entity_canvas_items[eid] = (item, col)
+            else:
+                item, _ = self._entity_canvas_items[eid]
+                if visible:
+                    self.canvas.coords(item, cx, cy, cx + scale_x, cy + scale_y)
+            self.canvas.itemconfig(item,
+                                   state="normal" if visible else "hidden")
 
+        sz = 3 * scale_x   # carré 3×3 monde → canvas
         for ind in self._snap_individuals:
-            px, py = int(ind.x) - x0, int(ind.y) - y0
-            r, g, b = [int(c * 255) for c in ind.species.color]
-            for dy in range(-1, 2):
-                for dx in range(-1, 2):
-                    ny2, nx2 = py + dy, px + dx
-                    if 0 <= nx2 < vw and 0 <= ny2 < vh:
-                        img_arr[ny2, nx2] = (r, g, b)
+            eid = id(ind)
+            alive_ids.add(eid)
+            cx = (ind.x - x0) * scale_x
+            cy = (ind.y - y0) * scale_y
+            visible = -sz <= cx < CANVAS_W + sz and -sz <= cy < CANVAS_H + sz
+            if eid not in self._entity_canvas_items:
+                r, g, b = [int(c * 255) for c in ind.species.color]
+                col = f"#{r:02x}{g:02x}{b:02x}"
+                item = self.canvas.create_rectangle(
+                    cx - sz/2, cy - sz/2, cx + sz/2, cy + sz/2,
+                    fill=col, outline="", tags="entity")
+                self._entity_canvas_items[eid] = (item, col)
+            else:
+                item, _ = self._entity_canvas_items[eid]
+                if visible:
+                    self.canvas.coords(item,
+                                       cx - sz/2, cy - sz/2,
+                                       cx + sz/2, cy + sz/2)
+            self.canvas.itemconfig(item,
+                                   state="normal" if visible else "hidden")
 
-        img_arr = self._day_night_filter(img_arr, tod)
-        img = Image.fromarray(img_arr, "RGB")
-        img = img.resize((CANVAS_W, CANVAS_H), Image.NEAREST)
-        self._tk_img = ImageTk.PhotoImage(img)
-        if self._canvas_img_id is None:
-            self._canvas_img_id = self.canvas.create_image(0, 0, anchor=tk.NW,
-                                                            image=self._tk_img)
-        else:
-            self.canvas.itemconfig(self._canvas_img_id, image=self._tk_img)
+        # Supprimer les items des entités mortes
+        dead_ids = set(self._entity_canvas_items) - alive_ids
+        for eid in dead_ids:
+            self.canvas.delete(self._entity_canvas_items.pop(eid)[0])
 
-        # Surlignage de l'entité sélectionnée
-        self.canvas.delete("highlight")
+        # ── Highlight entité sélectionnée : déplacer sans recréer ─────────────
         if self._selected_eid is not None:
-            scale_x = CANVAS_W / vw
-            scale_y = CANVAS_H / vh
             for e in self._entity_map:
                 if id(e) == self._selected_eid:
                     cx = (e.x - x0) * scale_x
                     cy = (e.y - y0) * scale_y
                     r  = 9
-                    self.canvas.create_oval(
-                        cx - r, cy - r, cx + r, cy + r,
-                        outline="#ffffff", width=2, tags="highlight",
-                    )
+                    if self._highlight_item is None:
+                        self._highlight_item = self.canvas.create_oval(
+                            cx-r, cy-r, cx+r, cy+r,
+                            outline="#ffffff", width=2)
+                    else:
+                        self.canvas.coords(self._highlight_item,
+                                           cx-r, cy-r, cx+r, cy+r)
+                        self.canvas.itemconfig(self._highlight_item, state="normal")
                     break
+        else:
+            if self._highlight_item is not None:
+                self.canvas.itemconfig(self._highlight_item, state="hidden")
 
     # ── Mise à jour HUD ───────────────────────────────────────────────────────
 
@@ -767,6 +825,11 @@ class SimViewer:
         self._selected_card_idx = None
         self._entity_map.clear()
         self._last_entity_count = -1
+        self._entity_canvas_items.clear()
+        self._last_cam_key  = None
+        self._highlight_item = None
+        self.canvas.delete("entity")
+        self.canvas.delete("highlight")
         self._cards_canvas.delete("all")
         self._entity_count_var.set("")
         self._set_detail("Cliquez sur une entité.")
