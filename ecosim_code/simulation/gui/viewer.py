@@ -34,10 +34,12 @@ class SimViewer:
         self._terrain_grid_id = None     # détecte changement de grille
 
         # Cache terrain : recalcul uniquement si la vue ou l'éclairage change
-        self._last_cam_key   = None      # (cam_x_r, cam_y_r, zoom_r, tod_bucket)
+        self._last_cam_key    = None  # (x0, y0, x1, y1) — vue monde
+        self._last_tod_bucket = -1    # int(tod * 72) — tranche d'éclairage
 
-        # Items canvas entités : entity_id → (canvas_item_id, hex_color)
+        # Items canvas entités : entity_id → (canvas_item_id, (r, g, b) base)
         self._entity_canvas_items: dict = {}
+        self._entity_brightness: float  = 1.0  # facteur jour/nuit courant
 
         # Item canvas du highlight de sélection (créé une seule fois)
         self._highlight_item = None
@@ -607,11 +609,17 @@ class SimViewer:
         scale_x = CANVAS_W / max(vw, 1)
         scale_y = CANVAS_H / max(vh, 1)
 
-        # ── Terrain : recalculé uniquement si vue ou éclairage a changé ──────
-        # tod_bucket : mise à jour toutes les ~1 min simulées (indétectable à l'œil)
-        tod_bucket = int(tod * 72)   # 72 tranches par jour = 20 min simulées chacune
-        cam_key = (x0, y0, x1, y1, tod_bucket)
-        if cam_key != self._last_cam_key:
+        # ── Éclairage : bucket de 72 tranches/jour (~20 min simulées) ───────────
+        tod_bucket = int(tod * 72)
+        lighting_changed = (tod_bucket != self._last_tod_bucket)
+        if lighting_changed:
+            self._last_tod_bucket = tod_bucket
+            sun = math.sin(tod * 2 * math.pi - math.pi / 2)
+            self._entity_brightness = 0.28 + 0.72 * (sun + 1) / 2
+
+        # ── Terrain : recalculé si caméra ou éclairage a changé ─────────────
+        cam_key = (x0, y0, x1, y1)
+        if cam_key != self._last_cam_key or lighting_changed:
             self._last_cam_key = cam_key
             img_arr = self._day_night_filter(self._terrain_base[y0:y1, x0:x1], tod)
             img = Image.fromarray(img_arr, "RGB")
@@ -624,6 +632,7 @@ class SimViewer:
                 self.canvas.itemconfig(self._canvas_img_id, image=self._tk_img)
 
         # ── Entités : items canvas mis à jour par coords() — pas de PIL ──────
+        brt = self._entity_brightness
         alive_ids: set = set()
 
         for plant in self._snap_plants:
@@ -633,18 +642,19 @@ class SimViewer:
             cy = (plant.y - y0) * scale_y
             visible = 0 <= cx < CANVAS_W and 0 <= cy < CANVAS_H
             if eid not in self._entity_canvas_items:
-                r, g, b = [int(c * 255) for c in plant.species.color]
-                col = f"#{r:02x}{g:02x}{b:02x}"
+                base = tuple(int(c * 255) for c in plant.species.color)
+                col  = _apply_brightness(base, brt)
                 item = self.canvas.create_rectangle(
                     cx, cy, cx + scale_x, cy + scale_y,
                     fill=col, outline="", tags="entity")
-                self._entity_canvas_items[eid] = (item, col)
+                self._entity_canvas_items[eid] = (item, base)
             else:
-                item, _ = self._entity_canvas_items[eid]
+                item, base = self._entity_canvas_items[eid]
+                if lighting_changed:
+                    self.canvas.itemconfig(item, fill=_apply_brightness(base, brt))
                 if visible:
                     self.canvas.coords(item, cx, cy, cx + scale_x, cy + scale_y)
-            self.canvas.itemconfig(item,
-                                   state="normal" if visible else "hidden")
+            self.canvas.itemconfig(item, state="normal" if visible else "hidden")
 
         sz = 3 * scale_x   # carré 3×3 monde → canvas
         for ind in self._snap_individuals:
@@ -654,20 +664,21 @@ class SimViewer:
             cy = (ind.y - y0) * scale_y
             visible = -sz <= cx < CANVAS_W + sz and -sz <= cy < CANVAS_H + sz
             if eid not in self._entity_canvas_items:
-                r, g, b = [int(c * 255) for c in ind.species.color]
-                col = f"#{r:02x}{g:02x}{b:02x}"
+                base = tuple(int(c * 255) for c in ind.species.color)
+                col  = _apply_brightness(base, brt)
                 item = self.canvas.create_rectangle(
                     cx - sz/2, cy - sz/2, cx + sz/2, cy + sz/2,
                     fill=col, outline="", tags="entity")
-                self._entity_canvas_items[eid] = (item, col)
+                self._entity_canvas_items[eid] = (item, base)
             else:
-                item, _ = self._entity_canvas_items[eid]
+                item, base = self._entity_canvas_items[eid]
+                if lighting_changed:
+                    self.canvas.itemconfig(item, fill=_apply_brightness(base, brt))
                 if visible:
                     self.canvas.coords(item,
                                        cx - sz/2, cy - sz/2,
                                        cx + sz/2, cy + sz/2)
-            self.canvas.itemconfig(item,
-                                   state="normal" if visible else "hidden")
+            self.canvas.itemconfig(item, state="normal" if visible else "hidden")
 
         # Supprimer les items des entités mortes
         dead_ids = set(self._entity_canvas_items) - alive_ids
@@ -826,8 +837,9 @@ class SimViewer:
         self._entity_map.clear()
         self._last_entity_count = -1
         self._entity_canvas_items.clear()
-        self._last_cam_key  = None
-        self._highlight_item = None
+        self._last_cam_key    = None
+        self._last_tod_bucket = -1
+        self._highlight_item  = None
         self.canvas.delete("entity")
         self.canvas.delete("highlight")
         self._cards_canvas.delete("all")
@@ -850,6 +862,14 @@ class SimViewer:
 
 
 # ── Utilitaires ───────────────────────────────────────────────────────────────
+
+def _apply_brightness(base_rgb: tuple, brt: float) -> str:
+    """Retourne un hex '#rrggbb' en appliquant un facteur de luminosité [0,1]."""
+    r = min(255, int(base_rgb[0] * brt))
+    g = min(255, int(base_rgb[1] * brt))
+    b = min(255, int(base_rgb[2] * brt))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
 
 def _blend_hex(hex1: str, hex2: str, t: float) -> str:
     """Mélange deux couleurs hex avec un facteur t ∈ [0,1] (0 = hex1, 1 = hex2)."""
