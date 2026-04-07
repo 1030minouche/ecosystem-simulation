@@ -650,11 +650,12 @@ class SimViewer:
                 self._entity_canvas_items[eid] = (item, base)
             else:
                 item, base = self._entity_canvas_items[eid]
-                if lighting_changed:
-                    self.canvas.itemconfig(item, fill=_apply_brightness(base, brt))
                 if visible:
                     self.canvas.coords(item, cx, cy, cx + scale_x, cy + scale_y)
-            self.canvas.itemconfig(item, state="normal" if visible else "hidden")
+                kw = {"state": "normal" if visible else "hidden"}
+                if lighting_changed:
+                    kw["fill"] = _apply_brightness(base, brt)
+                self.canvas.itemconfig(item, **kw)
 
         sz = 3 * scale_x   # carré 3×3 monde → canvas
         for ind in self._snap_individuals:
@@ -672,13 +673,14 @@ class SimViewer:
                 self._entity_canvas_items[eid] = (item, base)
             else:
                 item, base = self._entity_canvas_items[eid]
-                if lighting_changed:
-                    self.canvas.itemconfig(item, fill=_apply_brightness(base, brt))
                 if visible:
                     self.canvas.coords(item,
                                        cx - sz/2, cy - sz/2,
                                        cx + sz/2, cy + sz/2)
-            self.canvas.itemconfig(item, state="normal" if visible else "hidden")
+                kw = {"state": "normal" if visible else "hidden"}
+                if lighting_changed:
+                    kw["fill"] = _apply_brightness(base, brt)
+                self.canvas.itemconfig(item, **kw)
 
         # Supprimer les items des entités mortes
         dead_ids = set(self._entity_canvas_items) - alive_ids
@@ -707,9 +709,12 @@ class SimViewer:
 
     # ── Mise à jour HUD ───────────────────────────────────────────────────────
 
-    def _update_hud(self, tod: float):
+    def _update_hud(self):
         from simulation.engine import DAY_LENGTH, SIM_YEAR
+        # Lecture directe de tick_count — atomique sous GIL, toujours à jour
+        # même si le verrou non-bloquant n'a pas été acquis ce frame.
         tick  = self.engine.tick_count
+        tod   = (tick % DAY_LENGTH) / DAY_LENGTH
         day   = (tick // DAY_LENGTH) % 365
         year  = tick // SIM_YEAR + 1
         heure = int(tod * 24)
@@ -789,7 +794,7 @@ class SimViewer:
         self._cam_y += (self._cam_ty - self._cam_y) * alpha
 
         self._render_frame(tod)
-        self._update_hud(tod)
+        self._update_hud()
         self._update_entity_panel()
 
         sky = self._sky_color(tod)
