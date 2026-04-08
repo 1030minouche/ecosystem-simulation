@@ -28,7 +28,7 @@ class SimulationEngine:
         self._default_counts       = {}
         self._population_overrides = {}
         self._species_raw_params   = {}   # raw params (avec *_std) par nom d'espèce
-        self.lock = threading.RLock()     # protège individuals/plants contre les accès concurrents
+        self.lock = threading.Lock()      # protège individuals/plants contre les accès concurrents
 
     # ── Configuration ────────────────────────────────────────────────────────
 

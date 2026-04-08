@@ -30,7 +30,8 @@ class DeathLogger:
             getattr(ind, "death_on_water",     "?"),
             getattr(ind, "death_cause",        "unknown"),
         ])
-        self._file.flush()
+        if tick % 500 == 0:
+            self._file.flush()
 
     def close(self) -> None:
         self._file.close()
