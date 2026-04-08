@@ -296,7 +296,7 @@ class SimViewer:
         self._entity_map = list(entities)
 
         cc = self._cards_canvas
-        cc.delete("all")
+        old_items = cc.find_all()   # garder les anciens items — supprimés APRÈS le redessinage
 
         cc.update_idletasks()
         cw = cc.winfo_width()
@@ -422,6 +422,10 @@ class SimViewer:
         n_a = len(self._snap_individuals)
         n_p = len(self._snap_plants)
         self._entity_count_var.set(f"{n_a} animaux · {n_p} plantes")
+
+        # Supprimer les anciens items maintenant que les nouveaux sont dessinés
+        for item_id in old_items:
+            cc.delete(item_id)
 
         # Scroller vers la carte sélectionnée si elle existe
         if self._selected_card_idx is not None and total_h > 0:
