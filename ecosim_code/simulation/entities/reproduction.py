@@ -86,11 +86,12 @@ class ReproductionMixin:
         # ── Effet de peur sur la reproduction ──────────────────────────────
         effective_rate = self.species.reproduction_rate
         if self.species.fear_factor > 0:
+            r2 = self.species.perception_radius ** 2
             n_pred = sum(
                 1 for other in all_individuals
                 if other.alive
                 and self.species.name in other.species.food_sources
-                and math.hypot(other.x - self.x, other.y - self.y) < self.species.perception_radius
+                and (other.x - self.x) ** 2 + (other.y - self.y) ** 2 < r2
             )
             if n_pred > 0:
                 effective_rate /= (1.0 + self.species.fear_factor * n_pred)

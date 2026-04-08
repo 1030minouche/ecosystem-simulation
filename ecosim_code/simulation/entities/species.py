@@ -99,6 +99,12 @@ class Species:
     #               repos en pleine nuit et en pleine journée
     activity_pattern: str = "diurnal"
 
+    def __post_init__(self):
+        # Convertit food_sources en frozenset pour des tests `in` en O(1)
+        # au lieu de O(k) avec une liste.
+        if not isinstance(self.food_sources, frozenset):
+            self.food_sources = frozenset(self.food_sources)
+
     # Compat. ascendante : nocturnal est dérivé de activity_pattern
     @property
     def nocturnal(self) -> bool:
