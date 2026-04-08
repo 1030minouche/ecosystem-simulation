@@ -18,7 +18,7 @@ class MovementMixin:
 
     # ── Exploration ───────────────────────────────────────────────────────────
 
-    def _wander(self, grid, speed_factor: float = 1.0, nearby_inds=None):
+    def _wander(self, grid, speed_factor: float = 1.0, herd_centroid=None):
         dx = self.explore_x - self.x
         dy = self.explore_y - self.y
 
@@ -47,25 +47,11 @@ class MovementMixin:
                     self.explore_y = random.uniform(2, grid.height - 3)
 
         # ── Cohésion de troupeau ──────────────────────────────────────────────
-        # Biaise la cible d'exploration vers le centroïde des congénères proches.
-        if nearby_inds is not None and self.species.herd_cohesion > 0:
-            r2 = (self.species.perception_radius * 2.5) ** 2
-            sx, sy, cnt = 0.0, 0.0, 0
-            for other in nearby_inds:
-                if other is self or not other.alive:
-                    continue
-                if other.species.name != self.species.name:
-                    continue
-                ddx = other.x - self.x
-                ddy = other.y - self.y
-                if ddx * ddx + ddy * ddy <= r2:
-                    sx += other.x
-                    sy += other.y
-                    cnt += 1
-            if cnt > 0:
-                c = self.species.herd_cohesion
-                self.explore_x = (1.0 - c) * self.explore_x + c * (sx / cnt)
-                self.explore_y = (1.0 - c) * self.explore_y + c * (sy / cnt)
+        # Biaise la cible d'exploration vers le centroïde pré-calculé par le moteur.
+        if herd_centroid is not None and self.species.herd_cohesion > 0:
+            c = self.species.herd_cohesion
+            self.explore_x = (1.0 - c) * self.explore_x + c * herd_centroid[0]
+            self.explore_y = (1.0 - c) * self.explore_y + c * herd_centroid[1]
 
         dx = self.explore_x - self.x
         dy = self.explore_y - self.y

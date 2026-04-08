@@ -118,6 +118,22 @@ class SimulationEngine:
         for ind   in self.individuals: ind_grid.insert(ind)
         for plant in self.plants:      plant_grid.insert(plant)
 
+        # ── Centroïdes de troupeau (une passe O(n) pour toutes les espèces) ─────
+        # Évite que chaque animal en état wander reboucle sur ses voisins (O(n²)).
+        _hc_acc: dict = {}  # name → [sx, sy, count]
+        for ind in self.individuals:
+            if ind.species.herd_cohesion > 0:
+                name = ind.species.name
+                if name not in _hc_acc:
+                    _hc_acc[name] = [0.0, 0.0, 0]
+                _hc_acc[name][0] += ind.x
+                _hc_acc[name][1] += ind.y
+                _hc_acc[name][2] += 1
+        herd_centroids = {
+            name: (acc[0] / acc[2], acc[1] / acc[2])
+            for name, acc in _hc_acc.items()
+        }
+
         # ── Animaux ──────────────────────────────────────────────────────────
         time_of_day     = (self.tick_count % DAY_LENGTH) / DAY_LENGTH
         new_individuals = []
@@ -126,7 +142,8 @@ class SimulationEngine:
             r = ind.species.perception_radius * 3.0
             nearby_inds   = ind_grid.query(ind.x, ind.y, r)
             nearby_plants = plant_grid.query(ind.x, ind.y, r)
-            babies = ind.tick(self.grid, nearby_plants, nearby_inds, time_of_day)
+            babies = ind.tick(self.grid, nearby_plants, nearby_inds, time_of_day,
+                              herd_centroids=herd_centroids)
             new_individuals.extend(babies)
 
         # Enregistrement des morts avant purge
