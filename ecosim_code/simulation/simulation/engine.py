@@ -88,38 +88,41 @@ class SimulationEngine:
     def tick(self):
         self.tick_count += 1
 
-        # ── Plantes ──────────────────────────────────────────────────────────
-        plant_count = len(self.plants)
-        new_plants  = []
-        for plant in self.plants:
-            # On passe le total courant (existants + déjà nés ce tick) pour
-            # éviter que toutes les plantes se reproduisent dans le même tick
-            babies = plant.tick(self.grid, plant_count + len(new_plants))
-            new_plants.extend(babies)
-        # Filtrer les plantes mortes + mettre à jour le compteur d'espèces
-        surviving_plants = []
-        for p in self.plants:
-            if p.alive:
-                surviving_plants.append(p)
-            else:
-                self._species_counts[p.species.name] = self._species_counts.get(p.species.name, 0) - 1
-        self.plants = surviving_plants
-        # Hard cap : par sécurité, respecter max_population même si plant.py laisse passer
-        if new_plants:
-            sp_pc = {}
+        # ── Plantes (1 tick sur 10) ───────────────────────────────────────────
+        # Les plantes poussent sur des centaines de ticks : inutile de les
+        # évaluer 20×/s. growth_rate dans les JSON est compensé (×10).
+        if self.tick_count % 10 == 0:
+            plant_count = len(self.plants)
+            new_plants  = []
+            for plant in self.plants:
+                # On passe le total courant (existants + déjà nés ce tick) pour
+                # éviter que toutes les plantes se reproduisent dans le même tick
+                babies = plant.tick(self.grid, plant_count + len(new_plants))
+                new_plants.extend(babies)
+            # Filtrer les plantes mortes + mettre à jour le compteur d'espèces
+            surviving_plants = []
             for p in self.plants:
-                sp_pc[p.species.name] = sp_pc.get(p.species.name, 0) + 1
-            kept_p = []
-            for baby in new_plants:
-                n = baby.species.name
-                c = sp_pc.get(n, 0)
-                if c < baby.species.max_population:
-                    kept_p.append(baby)
-                    sp_pc[n] = c + 1
-            new_plants = kept_p
-        for p in new_plants:
-            self._species_counts[p.species.name] = self._species_counts.get(p.species.name, 0) + 1
-        self.plants.extend(new_plants)
+                if p.alive:
+                    surviving_plants.append(p)
+                else:
+                    self._species_counts[p.species.name] = self._species_counts.get(p.species.name, 0) - 1
+            self.plants = surviving_plants
+            # Hard cap : par sécurité, respecter max_population même si plant.py laisse passer
+            if new_plants:
+                sp_pc = {}
+                for p in self.plants:
+                    sp_pc[p.species.name] = sp_pc.get(p.species.name, 0) + 1
+                kept_p = []
+                for baby in new_plants:
+                    n = baby.species.name
+                    c = sp_pc.get(n, 0)
+                    if c < baby.species.max_population:
+                        kept_p.append(baby)
+                        sp_pc[n] = c + 1
+                new_plants = kept_p
+            for p in new_plants:
+                self._species_counts[p.species.name] = self._species_counts.get(p.species.name, 0) + 1
+            self.plants.extend(new_plants)
 
         # ── Grilles spatiales (construites une fois par tick) ─────────────────
         # cell_size = max perception radius → densité optimale
