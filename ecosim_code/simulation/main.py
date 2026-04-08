@@ -43,35 +43,35 @@ for _path in sorted(glob.glob(os.path.join(_species_dir, "*.json"))):
 
 # ── Thread de simulation ──────────────────────────────────────────────────────
 
-TICK_RATE  = 20    # ticks/s à ×1
-MAX_BATCH  = 200   # cap de sécurité : jamais plus de N ticks par itération
+TICK_RATE = 20
+BUDGET_S  = 0.020   # max 20 ms de ticks par itération
 
 def _sim_loop():
-    """Boucle time-based avec accumulateur fractionnaire.
+    """Boucle time-based avec budget temps.
 
-    Au lieu d'un gros burst (speed × ticks d'un coup puis 50 ms de silence),
-    on distribue les ticks en petits lots réguliers selon le temps réel écoulé.
-    Résultat : le compteur de ticks avance de façon linéaire quelle que soit
-    la vitesse choisie.
+    L'accumulateur calcule combien de ticks sont dus selon le temps réel écoulé.
+    Le budget de 20 ms garantit que la boucle ne bloque jamais longtemps :
+    si les ticks sont lents, on en fait moins par itération sans créer de gros
+    paquets bloquants.
+    Le reliquat fractionnaire est conservé → aucun tick simulé n'est perdu.
     """
     _acc  = 0.0
     _last = time.monotonic()
     while True:
-        time.sleep(0.002)          # polling court ; Windows arrondira à ~15 ms, c'est OK
-        now = time.monotonic()
-        dt  = now - _last
-        _last = now
+        time.sleep(0.001)
+        now    = time.monotonic()
+        _acc  += (now - _last) * TICK_RATE * engine.speed
+        _last  = now
+
         if not engine.running:
-            _acc = 0.0             # réinitialise l'accumulateur à la pause
+            _acc = 0.0
             continue
-        _acc += dt * TICK_RATE * engine.speed
-        n = min(int(_acc), MAX_BATCH)
-        if n <= 0:
-            continue
-        _acc -= n                  # conserve la partie fractionnaire
+
+        deadline = time.monotonic() + BUDGET_S
         with engine.lock:
-            for _ in range(n):
+            while _acc >= 1.0 and time.monotonic() < deadline:
                 engine.tick()
+                _acc -= 1.0
 
 threading.Thread(target=_sim_loop, daemon=True).start()
 
