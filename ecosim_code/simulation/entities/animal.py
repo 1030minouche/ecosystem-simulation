@@ -52,7 +52,8 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
 
     # ── Boucle de vie ─────────────────────────────────────────────────────────
 
-    def tick(self, grid, all_plants, all_individuals, time_of_day: float = 0.5):
+    def tick(self, grid, all_plants, all_individuals, time_of_day: float = 0.5,
+             herd_centroids: dict = None):
         if not self.alive:
             return []
 
@@ -129,7 +130,8 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
         elif self.state == "reproduce":
             newborns.extend(self._try_reproduce(all_individuals, grid))
         else:  # "wander", "en_vol"
-            self._wander(grid, nearby_inds=all_individuals)
+            centroid = herd_centroids.get(self.species.name) if herd_centroids else None
+            self._wander(grid, herd_centroid=centroid)
 
         self.x = max(0, min(grid.width  - 1, self.x))
         self.y = max(0, min(grid.height - 1, self.y))
