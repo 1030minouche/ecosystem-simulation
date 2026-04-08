@@ -29,6 +29,9 @@ class SimulationEngine:
         self._population_overrides = {}
         self._species_raw_params   = {}   # raw params (avec *_std) par nom d'espèce
         self.lock = threading.RLock()     # protège individuals/plants contre les accès concurrents
+        # Grilles spatiales réutilisées chaque tick (évite de réallouer les dicts internes)
+        self._ind_grid   = SpatialGrid(1.0)
+        self._plant_grid = SpatialGrid(1.0)
 
     # ── Configuration ────────────────────────────────────────────────────────
 
@@ -113,10 +116,14 @@ class SimulationEngine:
             (sp.perception_radius for sp in self.species_list if sp.type != "plant"),
             default=10.0,
         )
-        ind_grid   = SpatialGrid(max_perception)
-        plant_grid = SpatialGrid(max_perception)
-        for ind   in self.individuals: ind_grid.insert(ind)
-        for plant in self.plants:      plant_grid.insert(plant)
+        self._ind_grid.cell_size   = max(max_perception, 1.0)
+        self._plant_grid.cell_size = max(max_perception, 1.0)
+        self._ind_grid.clear()
+        self._plant_grid.clear()
+        for ind   in self.individuals: self._ind_grid.insert(ind)
+        for plant in self.plants:      self._plant_grid.insert(plant)
+        ind_grid   = self._ind_grid
+        plant_grid = self._plant_grid
 
         # ── Animaux ──────────────────────────────────────────────────────────
         time_of_day     = (self.tick_count % DAY_LENGTH) / DAY_LENGTH
