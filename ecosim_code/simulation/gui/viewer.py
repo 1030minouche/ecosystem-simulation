@@ -56,6 +56,8 @@ class SimViewer:
         self._last_entity_count  = -1
         self._last_rebuild_time  = 0.0   # timestamp du dernier rebuild des cartes
         self._last_detail_time   = 0.0   # timestamp du dernier update du détail
+        self._last_detail_text   = None  # contenu affiché (anti-clignotement)
+        self._last_detail_name   = None
 
         # Caméra et zoom (animés par interpolation exponentielle)
         self._zoom    = 1.0
@@ -463,6 +465,10 @@ class SimViewer:
     # ── Détail entité ─────────────────────────────────────────────────────────
 
     def _set_detail(self, text: str, name: str = ""):
+        if text == self._last_detail_text and name == self._last_detail_name:
+            return
+        self._last_detail_text = text
+        self._last_detail_name = name
         self._detail_name_var.set(name)
         self._detail_text.config(state=tk.NORMAL)
         self._detail_text.delete("1.0", tk.END)
