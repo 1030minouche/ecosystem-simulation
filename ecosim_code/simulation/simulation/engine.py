@@ -28,6 +28,7 @@ class SimulationEngine:
         self._default_counts       = {}
         self._population_overrides = {}
         self._species_raw_params   = {}   # raw params (avec *_std) par nom d'espèce
+        self._species_counts       = {}   # {name: int} nb entités vivantes — mis à jour incrémentalement
         self.lock = threading.RLock()     # protège individuals/plants contre les accès concurrents
 
     # ── Configuration ────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ class SimulationEngine:
                     home_x=float(x), home_y=float(y),
                 ))
             spawned += 1
+        self._species_counts[sp_template.name] = self._species_counts.get(sp_template.name, 0) + spawned
 
     # ── Boucle de simulation ─────────────────────────────────────────────────
 
@@ -91,7 +93,14 @@ class SimulationEngine:
             # éviter que toutes les plantes se reproduisent dans le même tick
             babies = plant.tick(self.grid, plant_count + len(new_plants))
             new_plants.extend(babies)
-        self.plants = [p for p in self.plants if p.alive]
+        # Filtrer les plantes mortes + mettre à jour le compteur d'espèces
+        surviving_plants = []
+        for p in self.plants:
+            if p.alive:
+                surviving_plants.append(p)
+            else:
+                self._species_counts[p.species.name] = self._species_counts.get(p.species.name, 0) - 1
+        self.plants = surviving_plants
         # Hard cap : par sécurité, respecter max_population même si plant.py laisse passer
         if new_plants:
             sp_pc = {}
@@ -105,6 +114,8 @@ class SimulationEngine:
                     kept_p.append(baby)
                     sp_pc[n] = c + 1
             new_plants = kept_p
+        for p in new_plants:
+            self._species_counts[p.species.name] = self._species_counts.get(p.species.name, 0) + 1
         self.plants.extend(new_plants)
 
         # ── Grilles spatiales (construites une fois par tick) ─────────────────
@@ -129,12 +140,16 @@ class SimulationEngine:
             babies = ind.tick(self.grid, nearby_plants, nearby_inds, time_of_day)
             new_individuals.extend(babies)
 
-        # Enregistrement des morts avant purge
+        # Enregistrement des morts + mise à jour compteur d'espèces
+        surviving_inds = []
         for ind in self.individuals:
-            if not ind.alive and hasattr(ind, "death_cause"):
-                self.death_log.record(ind, self.tick_count)
-
-        self.individuals = [i for i in self.individuals if i.alive]
+            if ind.alive:
+                surviving_inds.append(ind)
+            else:
+                self._species_counts[ind.species.name] = self._species_counts.get(ind.species.name, 0) - 1
+                if hasattr(ind, "death_cause"):
+                    self.death_log.record(ind, self.tick_count)
+        self.individuals = surviving_inds
 
         # Respecter max_population par espèce (bug fix : sans ça la pop explose)
         if new_individuals:
@@ -150,13 +165,14 @@ class SimulationEngine:
                     sp_count[n] = c + 1
             new_individuals = kept
 
+        for baby in new_individuals:
+            self._species_counts[baby.species.name] = self._species_counts.get(baby.species.name, 0) + 1
         self.individuals.extend(new_individuals)
 
         # ── Détection d'extinction ────────────────────────────────────────────
-        current_names = {p.species.name for p in self.plants} | \
-                        {i.species.name for i in self.individuals}
+        # Compteur incrémental — pas de parcours O(n) des listes à chaque tick.
         for sp in self.species_list:
-            if sp.name not in current_names and sp.name not in self._extinct:
+            if self._species_counts.get(sp.name, 0) <= 0 and sp.name not in self._extinct:
                 self._extinct.add(sp.name)
                 self.logger.log_event(self.tick_count, f"EXTINCTION de {sp.name}")
                 self.report.record_event(self.tick_count, "extinction", sp.name)
@@ -195,6 +211,7 @@ class SimulationEngine:
         self.individuals = []
         self.plants      = []
         self._extinct    = set()
+        self._species_counts = {}
 
         saved_defaults  = dict(self._default_counts)
         saved_overrides = dict(self._population_overrides)
