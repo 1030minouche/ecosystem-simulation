@@ -56,6 +56,8 @@ class SimViewer:
         self._last_entity_count  = -1
         self._last_rebuild_time  = 0.0   # timestamp du dernier rebuild des cartes
         self._last_detail_time   = 0.0   # timestamp du dernier update du détail
+        self._last_detail_text   = None  # contenu affiché (anti-clignotement)
+        self._last_detail_name   = None
 
         # Caméra et zoom (animés par interpolation exponentielle)
         self._zoom    = 1.0
@@ -294,7 +296,7 @@ class SimViewer:
         self._entity_map = list(entities)
 
         cc = self._cards_canvas
-        cc.delete("all")
+        old_items = cc.find_all()   # garder les anciens items — supprimés APRÈS le redessinage
 
         cc.update_idletasks()
         cw = cc.winfo_width()
@@ -421,6 +423,10 @@ class SimViewer:
         n_p = len(self._snap_plants)
         self._entity_count_var.set(f"{n_a} animaux · {n_p} plantes")
 
+        # Supprimer les anciens items maintenant que les nouveaux sont dessinés
+        for item_id in old_items:
+            cc.delete(item_id)
+
         # Scroller vers la carte sélectionnée si elle existe
         if self._selected_card_idx is not None and total_h > 0:
             frac = (self._selected_card_idx * CARD_H) / total_h
@@ -463,6 +469,10 @@ class SimViewer:
     # ── Détail entité ─────────────────────────────────────────────────────────
 
     def _set_detail(self, text: str, name: str = ""):
+        if text == self._last_detail_text and name == self._last_detail_name:
+            return
+        self._last_detail_text = text
+        self._last_detail_name = name
         self._detail_name_var.set(name)
         self._detail_text.config(state=tk.NORMAL)
         self._detail_text.delete("1.0", tk.END)
