@@ -12,7 +12,7 @@ from PIL import Image, ImageTk
 
 CANVAS_W = 700
 CANVAS_H = 700
-REFRESH_MS = 100  # 10 fps — réduit la contention GIL avec le thread sim
+REFRESH_MS = 50   # 20 fps
 
 # ── Constantes panneau cartes entités ────────────────────────────────────────
 CARD_H   = 58    # hauteur d'une carte en pixels
@@ -37,9 +37,9 @@ class SimViewer:
         self._last_cam_key    = None  # (x0, y0, x1, y1) — vue monde
         self._last_tod_bucket = -1    # int(tod * 72) — tranche d'éclairage
 
-        # Cache terrain NumPy (CANVAS_W×CANVAS_H×3) — sans entités
-        self._cached_terrain_arr: np.ndarray | None = None
-        self._entity_brightness: float = 1.0  # facteur jour/nuit courant
+        # Items canvas entités : entity_id → (canvas_item_id, (r, g, b) base)
+        self._entity_canvas_items: dict = {}
+        self._entity_brightness: float  = 1.0  # facteur jour/nuit courant
 
         # Item canvas du highlight de sélection (créé une seule fois)
         self._highlight_item = None
@@ -631,57 +631,71 @@ class SimViewer:
         cam_key = (x0, y0, x1, y1)
         if cam_key != self._last_cam_key or lighting_changed:
             self._last_cam_key = cam_key
-            filtered = self._day_night_filter(self._terrain_base[y0:y1, x0:x1], tod)
-            self._cached_terrain_arr = np.array(
-                Image.fromarray(filtered, "RGB").resize((CANVAS_W, CANVAS_H), Image.NEAREST)
-            )
-
-        # ── Entités dessinées dans img_arr par NumPy — zéro appel canvas ─────
-        img_arr = self._cached_terrain_arr.copy()
-        brt = self._entity_brightness
-        pw = max(1, int(scale_x))
-        ph = max(1, int(scale_y))
-
-        plants = self._snap_plants
-        if plants:
-            xs  = np.array([(p.x - x0) * scale_x for p in plants], dtype=np.float32)
-            ys  = np.array([(p.y - y0) * scale_y for p in plants], dtype=np.float32)
-            pxi = xs.astype(int)
-            pyi = ys.astype(int)
-            clrs = np.array(
-                [[min(255, int(c * 255 * brt)) for c in p.species.color] for p in plants],
-                dtype=np.uint8,
-            )
-            mask = (pxi >= 0) & (pxi + pw <= CANVAS_W) & (pyi >= 0) & (pyi + ph <= CANVAS_H)
-            if pw == 1 and ph == 1:
-                img_arr[pyi[mask], pxi[mask]] = clrs[mask]
+            img_arr = self._day_night_filter(self._terrain_base[y0:y1, x0:x1], tod)
+            img = Image.fromarray(img_arr, "RGB")
+            img = img.resize((CANVAS_W, CANVAS_H), Image.NEAREST)
+            self._tk_img = ImageTk.PhotoImage(img)
+            if self._canvas_img_id is None:
+                self._canvas_img_id = self.canvas.create_image(
+                    0, 0, anchor=tk.NW, image=self._tk_img)
             else:
-                for i in np.where(mask)[0]:
-                    img_arr[pyi[i]:pyi[i] + ph, pxi[i]:pxi[i] + pw] = clrs[i]
+                self.canvas.itemconfig(self._canvas_img_id, image=self._tk_img)
 
-        sz   = max(1, int(3 * scale_x))
-        half = sz // 2
+        # ── Entités : items canvas mis à jour par coords() — pas de PIL ──────
+        brt = self._entity_brightness
+        alive_ids: set = set()
+
+        for plant in self._snap_plants:
+            eid = id(plant)
+            alive_ids.add(eid)
+            cx = (plant.x - x0) * scale_x
+            cy = (plant.y - y0) * scale_y
+            visible = 0 <= cx < CANVAS_W and 0 <= cy < CANVAS_H
+            if eid not in self._entity_canvas_items:
+                base = tuple(int(c * 255) for c in plant.species.color)
+                col  = _apply_brightness(base, brt)
+                item = self.canvas.create_rectangle(
+                    cx, cy, cx + scale_x, cy + scale_y,
+                    fill=col, outline="", tags="entity")
+                self._entity_canvas_items[eid] = (item, base)
+            else:
+                item, base = self._entity_canvas_items[eid]
+                if visible:
+                    self.canvas.coords(item, cx, cy, cx + scale_x, cy + scale_y)
+                kw = {"state": "normal" if visible else "hidden"}
+                if lighting_changed:
+                    kw["fill"] = _apply_brightness(base, brt)
+                self.canvas.itemconfig(item, **kw)
+
+        sz = 3 * scale_x   # carré 3×3 monde → canvas
         for ind in self._snap_individuals:
-            cx  = int((ind.x - x0) * scale_x)
-            cy  = int((ind.y - y0) * scale_y)
-            x1e = max(0, cx - half)
-            x2e = min(CANVAS_W, cx + half + 1)
-            y1e = max(0, cy - half)
-            y2e = min(CANVAS_H, cy + half + 1)
-            if x2e > x1e and y2e > y1e:
-                col = np.array(
-                    [min(255, int(c * 255 * brt)) for c in ind.species.color],
-                    dtype=np.uint8,
-                )
-                img_arr[y1e:y2e, x1e:x2e] = col
+            eid = id(ind)
+            alive_ids.add(eid)
+            cx = (ind.x - x0) * scale_x
+            cy = (ind.y - y0) * scale_y
+            visible = -sz <= cx < CANVAS_W + sz and -sz <= cy < CANVAS_H + sz
+            if eid not in self._entity_canvas_items:
+                base = tuple(int(c * 255) for c in ind.species.color)
+                col  = _apply_brightness(base, brt)
+                item = self.canvas.create_rectangle(
+                    cx - sz/2, cy - sz/2, cx + sz/2, cy + sz/2,
+                    fill=col, outline="", tags="entity")
+                self._entity_canvas_items[eid] = (item, base)
+            else:
+                item, base = self._entity_canvas_items[eid]
+                if visible:
+                    self.canvas.coords(item,
+                                       cx - sz/2, cy - sz/2,
+                                       cx + sz/2, cy + sz/2)
+                kw = {"state": "normal" if visible else "hidden"}
+                if lighting_changed:
+                    kw["fill"] = _apply_brightness(base, brt)
+                self.canvas.itemconfig(item, **kw)
 
-        img = Image.fromarray(img_arr, "RGB")
-        self._tk_img = ImageTk.PhotoImage(img)
-        if self._canvas_img_id is None:
-            self._canvas_img_id = self.canvas.create_image(
-                0, 0, anchor=tk.NW, image=self._tk_img)
-        else:
-            self.canvas.itemconfig(self._canvas_img_id, image=self._tk_img)
+        # Supprimer les items des entités mortes
+        dead_ids = set(self._entity_canvas_items) - alive_ids
+        for eid in dead_ids:
+            self.canvas.delete(self._entity_canvas_items.pop(eid)[0])
 
         # ── Highlight entité sélectionnée : déplacer sans recréer ─────────────
         if self._selected_eid is not None:
@@ -837,7 +851,7 @@ class SimViewer:
         self._selected_card_idx = None
         self._entity_map.clear()
         self._last_entity_count = -1
-        self._cached_terrain_arr = None
+        self._entity_canvas_items.clear()
         self._last_cam_key    = None
         self._last_tod_bucket = -1
         self._highlight_item  = None
