@@ -25,7 +25,7 @@
     "speed_std": 0.25,
     "perception_radius": 30.0,
     "perception_radius_std": 2.0,
-    "food_sources": ["Lapin", "Cerf"],
+    "food_sources": ["Lapin", "Cerf", "Campagnol", "Sanglier"],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,
     "dispersal_radius": 0,

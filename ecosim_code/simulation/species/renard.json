@@ -31,7 +31,9 @@
     "perception_radius_std": 1.5,
     "food_sources": [
       "Lapin",
-      "Baies"
+      "Campagnol",
+      "Baies",
+      "Champignon"
     ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,

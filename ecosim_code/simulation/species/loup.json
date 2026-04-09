@@ -31,7 +31,9 @@
     "perception_radius_std": 2.0,
     "food_sources": [
       "Lapin",
-      "Cerf"
+      "Cerf",
+      "Sanglier",
+      "Campagnol"
     ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,
