@@ -12,7 +12,7 @@ from PIL import Image, ImageTk
 
 CANVAS_W = 700
 CANVAS_H = 700
-REFRESH_MS = 100  # 10 fps — réduit la contention GIL avec le thread sim
+REFRESH_MS = 50   # 20 fps
 
 # ── Constantes panneau cartes entités ────────────────────────────────────────
 CARD_H   = 58    # hauteur d'une carte en pixels
