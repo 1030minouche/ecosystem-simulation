@@ -652,26 +652,30 @@ class SimViewer:
             brt = self._entity_brightness
 
             def _sp_color(sp) -> np.ndarray:
-                c = self._species_color_cache.get(sp)
+                # Species n'est pas hashable (dataclass mutable) → clé par nom
+                c = self._species_color_cache.get(sp.name)
                 if c is None:
                     c = np.array(
                         [min(255, int(ch * 255 * brt)) for ch in sp.color],
                         dtype=np.uint8,
                     )
-                    self._species_color_cache[sp] = c
+                    self._species_color_cache[sp.name] = c
                 return c
 
             img_arr = self._cached_terrain_arr.copy()
             pw = max(1, int(scale_x))
             ph = max(1, int(scale_y))
 
-            # Plantes groupées par espèce → broadcast NumPy par espèce (3 couleurs calculées)
-            from collections import defaultdict
-            plants_by_sp: dict = defaultdict(list)
+            # Plantes groupées par espèce (clé = nom) → broadcast NumPy par espèce
+            plants_by_sp: dict = {}   # name → (species, list[plant])
             for p in self._snap_plants:
-                plants_by_sp[p.species].append(p)
+                entry = plants_by_sp.get(p.species.name)
+                if entry is None:
+                    plants_by_sp[p.species.name] = (p.species, [p])
+                else:
+                    entry[1].append(p)
 
-            for sp, sp_plants in plants_by_sp.items():
+            for _name, (sp, sp_plants) in plants_by_sp.items():
                 col = _sp_color(sp)
                 n   = len(sp_plants)
                 pxi = np.empty(n, dtype=np.int32)
