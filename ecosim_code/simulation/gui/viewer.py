@@ -37,9 +37,14 @@ class SimViewer:
         self._last_cam_key    = None  # (x0, y0, x1, y1) — vue monde
         self._last_tod_bucket = -1    # int(tod * 72) — tranche d'éclairage
 
-        # Items canvas entités : entity_id → (canvas_item_id, (r, g, b) base)
-        self._entity_canvas_items: dict = {}
-        self._entity_brightness: float  = 1.0  # facteur jour/nuit courant
+        # Rendu PIL : tableaux numpy cachés
+        self._cached_terrain_arr: np.ndarray | None = None   # terrain seul, CANVAS_W×H×3
+        self._cached_entity_arr:  np.ndarray | None = None   # terrain + entités
+        self._entity_brightness:  float = 1.0                # facteur jour/nuit courant
+        self._species_color_cache: dict = {}                  # sp → np.uint8[3]
+
+        # True si le verrou moteur a été acquis ce frame (snapshot frais)
+        self._snap_updated: bool = False
 
         # Item canvas du highlight de sélection (créé une seule fois)
         self._highlight_item = None
@@ -629,73 +634,82 @@ class SimViewer:
 
         # ── Terrain : recalculé si caméra ou éclairage a changé ─────────────
         cam_key = (x0, y0, x1, y1)
-        if cam_key != self._last_cam_key or lighting_changed:
+        terrain_changed = (cam_key != self._last_cam_key or lighting_changed)
+        if terrain_changed or self._cached_terrain_arr is None:
             self._last_cam_key = cam_key
-            img_arr = self._day_night_filter(self._terrain_base[y0:y1, x0:x1], tod)
-            img = Image.fromarray(img_arr, "RGB")
-            img = img.resize((CANVAS_W, CANVAS_H), Image.NEAREST)
-            self._tk_img = ImageTk.PhotoImage(img)
-            if self._canvas_img_id is None:
-                self._canvas_img_id = self.canvas.create_image(
-                    0, 0, anchor=tk.NW, image=self._tk_img)
-            else:
-                self.canvas.itemconfig(self._canvas_img_id, image=self._tk_img)
+            filtered = self._day_night_filter(self._terrain_base[y0:y1, x0:x1], tod)
+            self._cached_terrain_arr = np.array(
+                Image.fromarray(filtered, "RGB").resize((CANVAS_W, CANVAS_H), Image.NEAREST)
+            )
+            if lighting_changed:
+                self._species_color_cache.clear()
+            self._cached_entity_arr = None   # invalide le calque entités
 
-        # ── Entités : items canvas mis à jour par coords() — pas de PIL ──────
-        brt = self._entity_brightness
-        alive_ids: set = set()
+        # ── Entités : recalculées seulement si snapshot frais ou éclairage ────
+        # Quand le verrou est contesté (_snap_updated=False), on réutilise le
+        # calque précédent → zéro calcul → GUI reste responsive à ×10/×100.
+        if self._snap_updated or lighting_changed or self._cached_entity_arr is None:
+            brt = self._entity_brightness
 
-        for plant in self._snap_plants:
-            eid = id(plant)
-            alive_ids.add(eid)
-            cx = (plant.x - x0) * scale_x
-            cy = (plant.y - y0) * scale_y
-            visible = 0 <= cx < CANVAS_W and 0 <= cy < CANVAS_H
-            if eid not in self._entity_canvas_items:
-                base = tuple(int(c * 255) for c in plant.species.color)
-                col  = _apply_brightness(base, brt)
-                item = self.canvas.create_rectangle(
-                    cx, cy, cx + scale_x, cy + scale_y,
-                    fill=col, outline="", tags="entity")
-                self._entity_canvas_items[eid] = (item, base)
-            else:
-                item, base = self._entity_canvas_items[eid]
-                if visible:
-                    self.canvas.coords(item, cx, cy, cx + scale_x, cy + scale_y)
-                kw = {"state": "normal" if visible else "hidden"}
-                if lighting_changed:
-                    kw["fill"] = _apply_brightness(base, brt)
-                self.canvas.itemconfig(item, **kw)
+            def _sp_color(sp) -> np.ndarray:
+                c = self._species_color_cache.get(sp)
+                if c is None:
+                    c = np.array(
+                        [min(255, int(ch * 255 * brt)) for ch in sp.color],
+                        dtype=np.uint8,
+                    )
+                    self._species_color_cache[sp] = c
+                return c
 
-        sz = 3 * scale_x   # carré 3×3 monde → canvas
-        for ind in self._snap_individuals:
-            eid = id(ind)
-            alive_ids.add(eid)
-            cx = (ind.x - x0) * scale_x
-            cy = (ind.y - y0) * scale_y
-            visible = -sz <= cx < CANVAS_W + sz and -sz <= cy < CANVAS_H + sz
-            if eid not in self._entity_canvas_items:
-                base = tuple(int(c * 255) for c in ind.species.color)
-                col  = _apply_brightness(base, brt)
-                item = self.canvas.create_rectangle(
-                    cx - sz/2, cy - sz/2, cx + sz/2, cy + sz/2,
-                    fill=col, outline="", tags="entity")
-                self._entity_canvas_items[eid] = (item, base)
-            else:
-                item, base = self._entity_canvas_items[eid]
-                if visible:
-                    self.canvas.coords(item,
-                                       cx - sz/2, cy - sz/2,
-                                       cx + sz/2, cy + sz/2)
-                kw = {"state": "normal" if visible else "hidden"}
-                if lighting_changed:
-                    kw["fill"] = _apply_brightness(base, brt)
-                self.canvas.itemconfig(item, **kw)
+            img_arr = self._cached_terrain_arr.copy()
+            pw = max(1, int(scale_x))
+            ph = max(1, int(scale_y))
 
-        # Supprimer les items des entités mortes
-        dead_ids = set(self._entity_canvas_items) - alive_ids
-        for eid in dead_ids:
-            self.canvas.delete(self._entity_canvas_items.pop(eid)[0])
+            # Plantes groupées par espèce → broadcast NumPy par espèce (3 couleurs calculées)
+            from collections import defaultdict
+            plants_by_sp: dict = defaultdict(list)
+            for p in self._snap_plants:
+                plants_by_sp[p.species].append(p)
+
+            for sp, sp_plants in plants_by_sp.items():
+                col = _sp_color(sp)
+                n   = len(sp_plants)
+                pxi = np.empty(n, dtype=np.int32)
+                pyi = np.empty(n, dtype=np.int32)
+                for k, p in enumerate(sp_plants):
+                    pxi[k] = int((p.x - x0) * scale_x)
+                    pyi[k] = int((p.y - y0) * scale_y)
+                mask = (pxi >= 0) & (pxi + pw <= CANVAS_W) & (pyi >= 0) & (pyi + ph <= CANVAS_H)
+                if pw == 1 and ph == 1:
+                    img_arr[pyi[mask], pxi[mask]] = col
+                else:
+                    for i in np.where(mask)[0]:
+                        img_arr[pyi[i]:pyi[i] + ph, pxi[i]:pxi[i] + pw] = col
+
+            sz   = max(1, int(3 * scale_x))
+            half = sz // 2
+            for ind in self._snap_individuals:
+                col = _sp_color(ind.species)
+                cx  = int((ind.x - x0) * scale_x)
+                cy  = int((ind.y - y0) * scale_y)
+                x1e = max(0, cx - half)
+                x2e = min(CANVAS_W, cx + half + 1)
+                y1e = max(0, cy - half)
+                y2e = min(CANVAS_H, cy + half + 1)
+                if x2e > x1e and y2e > y1e:
+                    img_arr[y1e:y2e, x1e:x2e] = col
+
+            self._cached_entity_arr = img_arr
+
+        # ── Mise à jour canvas : une seule opération Tk par frame ─────────────
+        self._tk_img = ImageTk.PhotoImage(
+            Image.fromarray(self._cached_entity_arr, "RGB")
+        )
+        if self._canvas_img_id is None:
+            self._canvas_img_id = self.canvas.create_image(
+                0, 0, anchor=tk.NW, image=self._tk_img)
+        else:
+            self.canvas.itemconfig(self._canvas_img_id, image=self._tk_img)
 
         # ── Highlight entité sélectionnée : déplacer sans recréer ─────────────
         if self._selected_eid is not None:
@@ -788,11 +802,13 @@ class SimViewer:
         from simulation.engine import DAY_LENGTH
         # Acquisition non-bloquante : si le moteur tient le verrou (batch ×N),
         # on réutilise le snapshot précédent plutôt que de bloquer le thread UI.
+        self._snap_updated = False
         if self.engine.lock.acquire(blocking=False):
             try:
                 self._snap_tick        = self.engine.tick_count
                 self._snap_plants      = list(self.engine.plants)
                 self._snap_individuals = list(self.engine.individuals)
+                self._snap_updated     = True
             finally:
                 self.engine.lock.release()
         tick = self._snap_tick
@@ -851,7 +867,9 @@ class SimViewer:
         self._selected_card_idx = None
         self._entity_map.clear()
         self._last_entity_count = -1
-        self._entity_canvas_items.clear()
+        self._cached_terrain_arr = None
+        self._cached_entity_arr  = None
+        self._species_color_cache.clear()
         self._last_cam_key    = None
         self._last_tod_bucket = -1
         self._highlight_item  = None
