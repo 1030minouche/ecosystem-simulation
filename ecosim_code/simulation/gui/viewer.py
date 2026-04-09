@@ -48,8 +48,6 @@ class SimViewer:
         self._snap_tick        = 0
         self._snap_plants      = []
         self._snap_individuals = []
-        self._snap_updated     = False   # True si le snapshot a changé ce frame
-        self._species_color_cache: dict = {}   # sp → np.uint8[3], vidé si brt change
 
         # Suivi individuel
         self._selected_eid       = None  # id() de l'entité sélectionnée
@@ -631,60 +629,39 @@ class SimViewer:
 
         # ── Terrain : recalculé si caméra ou éclairage a changé ─────────────
         cam_key = (x0, y0, x1, y1)
-        terrain_changed = (cam_key != self._last_cam_key or lighting_changed)
-        if terrain_changed:
+        if cam_key != self._last_cam_key or lighting_changed:
             self._last_cam_key = cam_key
             filtered = self._day_night_filter(self._terrain_base[y0:y1, x0:x1], tod)
             self._cached_terrain_arr = np.array(
                 Image.fromarray(filtered, "RGB").resize((CANVAS_W, CANVAS_H), Image.NEAREST)
             )
-            # Cache couleurs espèces invalidé si éclairage change
-            if lighting_changed:
-                self._species_color_cache.clear()
-
-        # Rien de nouveau → pas de re-rendu (snapshot stale + terrain inchangé)
-        if not self._snap_updated and not terrain_changed:
-            return
-
-        # ── Cache couleurs par espèce (3 espèces max, recalcul si brt a changé) ─
-        brt = self._entity_brightness
-
-        def _sp_color(sp) -> np.ndarray:
-            c = self._species_color_cache.get(sp)
-            if c is None:
-                c = np.array([min(255, int(ch * 255 * brt)) for ch in sp.color], dtype=np.uint8)
-                self._species_color_cache[sp] = c
-            return c
 
         # ── Entités dessinées dans img_arr par NumPy — zéro appel canvas ─────
         img_arr = self._cached_terrain_arr.copy()
+        brt = self._entity_brightness
         pw = max(1, int(scale_x))
         ph = max(1, int(scale_y))
 
-        # Plantes groupées par espèce → un seul broadcast NumPy par espèce
-        from collections import defaultdict
-        plants_by_sp: dict = defaultdict(list)
-        for p in self._snap_plants:
-            plants_by_sp[p.species].append(p)
-
-        for sp, sp_plants in plants_by_sp.items():
-            col = _sp_color(sp)
-            n = len(sp_plants)
-            xs_f = np.fromiter((p.x for p in sp_plants), dtype=np.float32, count=n)
-            ys_f = np.fromiter((p.y for p in sp_plants), dtype=np.float32, count=n)
-            pxi = ((xs_f - x0) * scale_x).astype(np.int32)
-            pyi = ((ys_f - y0) * scale_y).astype(np.int32)
+        plants = self._snap_plants
+        if plants:
+            xs  = np.array([(p.x - x0) * scale_x for p in plants], dtype=np.float32)
+            ys  = np.array([(p.y - y0) * scale_y for p in plants], dtype=np.float32)
+            pxi = xs.astype(int)
+            pyi = ys.astype(int)
+            clrs = np.array(
+                [[min(255, int(c * 255 * brt)) for c in p.species.color] for p in plants],
+                dtype=np.uint8,
+            )
             mask = (pxi >= 0) & (pxi + pw <= CANVAS_W) & (pyi >= 0) & (pyi + ph <= CANVAS_H)
             if pw == 1 and ph == 1:
-                img_arr[pyi[mask], pxi[mask]] = col
+                img_arr[pyi[mask], pxi[mask]] = clrs[mask]
             else:
                 for i in np.where(mask)[0]:
-                    img_arr[pyi[i]:pyi[i] + ph, pxi[i]:pxi[i] + pw] = col
+                    img_arr[pyi[i]:pyi[i] + ph, pxi[i]:pxi[i] + pw] = clrs[i]
 
         sz   = max(1, int(3 * scale_x))
         half = sz // 2
         for ind in self._snap_individuals:
-            col = _sp_color(ind.species)
             cx  = int((ind.x - x0) * scale_x)
             cy  = int((ind.y - y0) * scale_y)
             x1e = max(0, cx - half)
@@ -692,6 +669,10 @@ class SimViewer:
             y1e = max(0, cy - half)
             y2e = min(CANVAS_H, cy + half + 1)
             if x2e > x1e and y2e > y1e:
+                col = np.array(
+                    [min(255, int(c * 255 * brt)) for c in ind.species.color],
+                    dtype=np.uint8,
+                )
                 img_arr[y1e:y2e, x1e:x2e] = col
 
         img = Image.fromarray(img_arr, "RGB")
@@ -793,13 +774,11 @@ class SimViewer:
         from simulation.engine import DAY_LENGTH
         # Acquisition non-bloquante : si le moteur tient le verrou (batch ×N),
         # on réutilise le snapshot précédent plutôt que de bloquer le thread UI.
-        self._snap_updated = False
         if self.engine.lock.acquire(blocking=False):
             try:
                 self._snap_tick        = self.engine.tick_count
                 self._snap_plants      = list(self.engine.plants)
                 self._snap_individuals = list(self.engine.individuals)
-                self._snap_updated     = True
             finally:
                 self.engine.lock.release()
         tick = self._snap_tick
@@ -859,7 +838,6 @@ class SimViewer:
         self._entity_map.clear()
         self._last_entity_count = -1
         self._cached_terrain_arr = None
-        self._species_color_cache.clear()
         self._last_cam_key    = None
         self._last_tod_bucket = -1
         self._highlight_item  = None
