@@ -72,20 +72,10 @@ class MovementMixin:
             return
         if grid.cells[cy][cx].soil_type != "water":
             return
-        best_x, best_y, best_d2 = -1, -1, float("inf")
-        for dy in range(-12, 13):
-            for dx in range(-12, 13):
-                nx, ny = cx + dx, cy + dy
-                if not (0 <= nx < grid.width and 0 <= ny < grid.height):
-                    continue
-                if grid.cells[ny][nx].soil_type == "water":
-                    continue
-                d2 = dx*dx + dy*dy
-                if d2 < best_d2:
-                    best_d2 = d2
-                    best_x, best_y = nx, ny
-        if best_x < 0:
+        result = grid.nearest_non_water(cx, cy, 12)
+        if result is None:
             return
+        best_x, best_y = result
         ddx = best_x - self.x
         ddy = best_y - self.y
         dist = max(math.hypot(ddx, ddy), 0.01)
@@ -112,19 +102,9 @@ class MovementMixin:
         if (0 <= cx < grid.width and 0 <= cy < grid.height
                 and grid.cells[cy][cx].soil_type != "water"):
             return
-        best_x, best_y, best_dist2 = -1, -1, float("inf")
-        for dy in range(-8, 9):
-            for dx in range(-8, 9):
-                nx, ny = cx + dx, cy + dy
-                if not (0 <= nx < grid.width and 0 <= ny < grid.height):
-                    continue
-                if grid.cells[ny][nx].soil_type == "water":
-                    continue
-                d2 = dx*dx + dy*dy
-                if d2 < best_dist2:
-                    best_dist2 = d2
-                    best_x, best_y = nx, ny
-        if best_x >= 0:
+        result = grid.nearest_non_water(cx, cy, 8)
+        if result is not None:
+            best_x, best_y = result
             ddx = best_x - self.x
             ddy = best_y - self.y
             dist = max(math.hypot(ddx, ddy), 0.01)

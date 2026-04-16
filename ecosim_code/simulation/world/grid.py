@@ -20,6 +20,22 @@ class Grid:
     def get_cell(self, x: int, y: int) -> Cell:
         return self.cells[y][x]
 
+    def nearest_non_water(self, cx: int, cy: int, max_radius: int) -> tuple[int, int] | None:
+        """Retourne la cellule non-eau la plus proche dans un rayon donné."""
+        best_x, best_y, best_d2 = -1, -1, float("inf")
+        for dy in range(-max_radius, max_radius + 1):
+            for dx in range(-max_radius, max_radius + 1):
+                nx, ny = cx + dx, cy + dy
+                if not (0 <= nx < self.width and 0 <= ny < self.height):
+                    continue
+                if self.cells[ny][nx].soil_type == "water":
+                    continue
+                d2 = dx * dx + dy * dy
+                if d2 < best_d2:
+                    best_d2 = d2
+                    best_x, best_y = nx, ny
+        return (best_x, best_y) if best_x >= 0 else None
+
     def get_neighbors(self, x: int, y: int) -> list:
         neighbors = []
         for dy in [-1, 0, 1]:
