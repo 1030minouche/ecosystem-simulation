@@ -17,6 +17,27 @@ _BIOME_ALTITUDES = {
     "snow":   0.92,
 }
 
+# Palette de biomes — source unique pour le viewer et l'éditeur de terrain.
+# Chaque entrée : (seuil_altitude_min, (R, G, B))
+BIOME_PALETTE: list[tuple[float, tuple[int, int, int]]] = [
+    (0.00, ( 20,  80, 160)),   # eau profonde
+    (0.28, ( 30, 110, 185)),   # eau
+    (0.30, (200, 175,  95)),   # sable
+    (0.40, (130, 190,  75)),   # plaine
+    (0.60, ( 60, 122,  51)),   # forêt
+    (0.75, (105, 100,  95)),   # roche/montagne
+    (0.85, (230, 230, 240)),   # neige
+]
+
+
+def altitude_to_rgb(alt: float) -> tuple[int, int, int]:
+    """Retourne la couleur RGB pour une altitude normalisée dans [0, 1]."""
+    color = BIOME_PALETTE[0][1]
+    for threshold, c in BIOME_PALETTE:
+        if alt >= threshold:
+            color = c
+    return color
+
 # ── Helpers internes ──────────────────────────────────────────────────────────
 
 def _pnoise(x: int, y: int, scale: float, octaves: int, seed: int) -> float:

@@ -10,6 +10,7 @@ import time
 import numpy as np
 from PIL import Image, ImageTk
 from simulation.utils.counting import count_by_species
+from world.terrain import BIOME_PALETTE
 
 CANVAS_W = 700
 CANVAS_H = 700
@@ -592,13 +593,8 @@ class SimViewer:
         alt = self.engine.grid.altitude
         h, w = alt.shape
         img = np.zeros((h, w, 3), dtype=np.uint8)
-        img[:]           = ( 20,  80, 160)
-        img[alt >= 0.28] = ( 30, 110, 185)
-        img[alt >= 0.30] = (200, 175,  95)
-        img[alt >= 0.40] = (130, 190,  75)
-        img[alt >= 0.60] = ( 60, 122,  51)
-        img[alt >= 0.75] = (105, 100,  95)
-        img[alt >= 0.85] = (230, 230, 240)
+        for threshold, color in BIOME_PALETTE:
+            img[alt >= threshold] = color
         self._terrain_base = img
         self._terrain_grid_id = id(self.engine.grid)
 
