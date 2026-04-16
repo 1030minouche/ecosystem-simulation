@@ -30,6 +30,7 @@ class SimulationEngine:
         self._population_overrides = {}
         self._species_raw_params   = {}   # raw params (avec *_std) par nom d'espèce
         self._species_counts       = {}   # {name: int} nb entités vivantes — mis à jour incrémentalement
+        self._max_perception       = 10.0 # mis à jour dans add_species / reset
         self.lock = threading.Lock()      # protège individuals/plants contre les accès concurrents
         # Grilles spatiales réutilisées chaque tick (évite de réallouer les dicts internes)
         self._ind_grid   = SpatialGrid(1.0)
@@ -90,6 +91,10 @@ class SimulationEngine:
                 ))
             spawned += 1
         self._species_counts[sp_template.name] = self._species_counts.get(sp_template.name, 0) + spawned
+        self._max_perception = max(
+            (sp.perception_radius for sp in self.species_list if not sp.is_plant()),
+            default=10.0,
+        )
 
     # ── Boucle de simulation ─────────────────────────────────────────────────
 
@@ -134,12 +139,8 @@ class SimulationEngine:
 
         # ── Grilles spatiales (construites une fois par tick) ─────────────────
         # cell_size = max perception radius → densité optimale
-        max_perception = max(
-            (sp.perception_radius for sp in self.species_list if sp.type != "plant"),
-            default=10.0,
-        )
-        self._ind_grid.cell_size   = max(max_perception, 1.0)
-        self._plant_grid.cell_size = max(max_perception, 1.0)
+        self._ind_grid.cell_size   = max(self._max_perception, 1.0)
+        self._plant_grid.cell_size = max(self._max_perception, 1.0)
         self._ind_grid.clear()
         self._plant_grid.clear()
         for ind   in self.individuals: self._ind_grid.insert(ind)
@@ -242,6 +243,7 @@ class SimulationEngine:
         self.plants      = []
         self._extinct    = set()
         self._species_counts = {}
+        self._max_perception = 10.0
 
         saved_defaults  = dict(self._default_counts)
         saved_overrides = dict(self._population_overrides)
