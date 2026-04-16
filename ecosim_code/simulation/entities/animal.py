@@ -23,6 +23,7 @@ from entities.activity import _is_resting, _is_pre_rest  # noqa: F401 — ré-ex
 from entities.movement import MovementMixin
 from entities.feeding import FeedingMixin
 from entities.reproduction import ReproductionMixin
+from entities.death import mark_dead
 import random
 
 
@@ -75,13 +76,8 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
                 and self.species.sexual_maturity_ticks > 0
                 and self.age < self.species.sexual_maturity_ticks):
             if random.random() < self.species.juvenile_mortality_rate:
-                self.death_cause    = "juvenile_mortality"
-                self.death_tod      = time_of_day
-                self.death_is_night = _is_resting(time_of_day, self.species.activity_pattern)
-                self.death_on_water = False
-                self.death_state    = self.state
-                self.alive = False
-                self.state = "dead"
+                mark_dead(self, "juvenile_mortality", grid, time_of_day,
+                          is_night=_is_resting(time_of_day, self.species.activity_pattern))
                 return newborns
 
         resting = _is_resting(time_of_day, self.species.activity_pattern)
@@ -94,16 +90,12 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
 
         if self.age >= self.species.max_age or self.energy <= 0:
             self._annotate_death(grid, resting, time_of_day)
-            self.alive = False
-            self.state = "dead"
             return newborns
 
         self._check_environment(grid, resting)
 
         if self.energy <= 0:
             self._annotate_death(grid, resting, time_of_day)
-            self.alive = False
-            self.state = "dead"
             return newborns
 
         predator = self._nearest_predator(all_individuals, time_of_day)
@@ -211,8 +203,4 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
             cause = "famine_nuit"
         else:
             cause = "famine_jour"
-        self.death_cause    = cause
-        self.death_tod      = time_of_day
-        self.death_is_night = resting
-        self.death_on_water = on_water
-        self.death_state    = self.state
+        mark_dead(self, cause, grid, time_of_day, is_night=resting)

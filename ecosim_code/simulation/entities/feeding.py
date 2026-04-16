@@ -10,6 +10,7 @@ import math
 import random
 
 from entities.activity import TICKS_PER_SECOND, _is_resting
+from entities.death import mark_dead
 
 
 class FeedingMixin:
@@ -75,15 +76,8 @@ class FeedingMixin:
             return
 
         # ── Mort de la proie — métadonnées pour le DeathLogger ────────────────
-        cx, cy = int(target.x), int(target.y)
-        on_water = (0 <= cx < grid.width and 0 <= cy < grid.height
-                    and grid.cells[cy][cx].soil_type == "water")
-        target.death_cause    = "predation"
-        target.death_tod      = time_of_day
-        target.death_is_night = _is_resting(time_of_day, target.species.activity_pattern)
-        target.death_on_water = on_water
-        target.death_state    = getattr(target, "state", None)
-        target.alive = False
+        mark_dead(target, "predation", grid, time_of_day,
+                  is_night=_is_resting(time_of_day, target.species.activity_pattern))
 
         self.energy = min(self.species.energy_start,
                           self.energy + self.species.energy_from_food)
