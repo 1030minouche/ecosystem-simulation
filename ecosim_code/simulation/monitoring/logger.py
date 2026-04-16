@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from simulation.utils.counting import count_by_species
 
 class SimulationLogger:
     def __init__(self):
@@ -18,11 +19,7 @@ class SimulationLogger:
 
     def log(self, tick: int, plants: list, individuals: list):
         """Appelé périodiquement (pas à chaque tick)."""
-        counts = {}
-        for p in plants:
-            counts[p.species.name] = counts.get(p.species.name, 0) + 1
-        for i in individuals:
-            counts[i.species.name] = counts.get(i.species.name, 0) + 1
+        counts = count_by_species(list(plants) + list(individuals))
         total = sum(counts.values())
         line = f"[Tick {tick:>6}] total={total:>5} │ "
         line += "  ".join(f"{name}: {count:>4}" for name, count in sorted(counts.items()))

@@ -9,6 +9,7 @@ import math
 import time
 import numpy as np
 from PIL import Image, ImageTk
+from simulation.utils.counting import count_by_species
 
 CANVAS_W = 700
 CANVAS_H = 700
@@ -755,11 +756,7 @@ class SimViewer:
         self._speed_var_d.set(f"Vitesse: ×{self.engine.speed}")
         self._draw_sun_bar(tod)
 
-        counts = {}
-        for p in self._snap_plants:
-            counts[p.species.name] = counts.get(p.species.name, 0) + 1
-        for i in self._snap_individuals:
-            counts[i.species.name] = counts.get(i.species.name, 0) + 1
+        counts = count_by_species(list(self._snap_plants) + list(self._snap_individuals))
 
         for sp in self.engine.species_list:
             n = sp.name

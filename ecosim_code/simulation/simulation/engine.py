@@ -8,6 +8,7 @@ from entities.plant import Plant
 from monitoring.report import SimulationReport
 from monitoring.logger import SimulationLogger
 from monitoring.death_log import DeathLogger
+from simulation.utils.counting import count_by_species
 
 DAY_LENGTH = 1_200        # ticks par jour simulé  (20 ticks/s × 60 s = 1 min réelle)
 SIM_YEAR   = 438_000     # ticks par an (365 × 1 200)
@@ -33,6 +34,13 @@ class SimulationEngine:
         # Grilles spatiales réutilisées chaque tick (évite de réallouer les dicts internes)
         self._ind_grid   = SpatialGrid(1.0)
         self._plant_grid = SpatialGrid(1.0)
+
+    # ── Lecture seule ─────────────────────────────────────────────────────────
+
+    @property
+    def species_counts(self) -> dict[str, int]:
+        """Nombre d'entités vivantes par nom d'espèce (copie en lecture seule)."""
+        return dict(self._species_counts)
 
     # ── Configuration ────────────────────────────────────────────────────────
 
@@ -209,12 +217,7 @@ class SimulationEngine:
         if self.tick_count % 500 == 0:
             self.report.record(self.tick_count, self.plants, self.individuals)
             self.logger.log(self.tick_count, self.plants, self.individuals)
-            counts = {}
-            for p in self.plants:
-                counts[p.species.name] = counts.get(p.species.name, 0) + 1
-            for i in self.individuals:
-                counts[i.species.name] = counts.get(i.species.name, 0) + 1
-            print(f"Tick {self.tick_count} — {counts}")
+            print(f"Tick {self.tick_count} — {self.species_counts}")
 
     # ── Génération de rapport ─────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@ import json
 import math
 import os
 from datetime import datetime
+from simulation.utils.counting import count_by_species
 
 class SimulationReport:
     def __init__(self):
@@ -116,11 +117,7 @@ class SimulationReport:
         end_time = datetime.now()
         duration = (end_time - self.start_time).seconds
 
-        final_populations = {}
-        for p in plants:
-            final_populations[p.species.name] = final_populations.get(p.species.name, 0) + 1
-        for i in individuals:
-            final_populations[i.species.name] = final_populations.get(i.species.name, 0) + 1
+        final_populations = count_by_species(list(plants) + list(individuals))
 
         # Indice de Shannon (biodiversité)
         total = sum(final_populations.values())
