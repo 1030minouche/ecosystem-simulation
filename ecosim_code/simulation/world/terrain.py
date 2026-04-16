@@ -45,6 +45,15 @@ def _pnoise(x: int, y: int, scale: float, octaves: int, seed: int) -> float:
     return (pnoise2(x / scale, y / scale, octaves=octaves, base=seed) + 1.0) * 0.5
 
 
+def _pnoise_grid(grid: "Grid", scale: float, octaves: int, seed: int) -> np.ndarray:
+    """Génère un tableau altitude (H×W) via bruit de Perlin vectorisé."""
+    xs = np.arange(grid.width)
+    ys = np.arange(grid.height)
+    xg, yg = np.meshgrid(xs, ys)   # shape (H, W)
+    vfunc = np.vectorize(lambda x, y: _pnoise(int(x), int(y), scale, octaves, seed))
+    return vfunc(xg, yg)
+
+
 def _disk_cells(cx: int, cy: int, radius: int, width: int, height: int):
     """Génère (x, y, t) pour chaque cellule dans le disque, t = dist/radius ∈ [0,1]."""
     inv_r = 1.0 / radius if radius > 0 else 0.0
@@ -108,41 +117,39 @@ def generate_terrain(grid: Grid, seed: int = 42, preset: str = "default") -> Non
 
 
 def _generate_default(grid: Grid, seed: int) -> None:
-    for y in range(grid.height):
-        for x in range(grid.width):
-            grid.altitude[y][x] = _pnoise(x, y, 50.0, 6, seed)
+    grid.altitude[:] = _pnoise_grid(grid, 50.0, 6, seed)
 
 
 def _generate_island(grid: Grid, seed: int) -> None:
-    cx, cy  = grid.width / 2.0, grid.height / 2.0
-    max_d   = min(grid.width, grid.height) / 2.0
-    for y in range(grid.height):
-        for x in range(grid.width):
-            noise    = _pnoise(x, y, 38.0, 6, seed)
-            gradient = max(0.0, 1.0 - (((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 / max_d) ** 1.4)
-            grid.altitude[y][x] = max(0.0, min(1.0, noise * 0.55 + gradient * 0.65 - 0.18))
+    cx, cy = grid.width / 2.0, grid.height / 2.0
+    max_d  = min(grid.width, grid.height) / 2.0
+    xs = np.arange(grid.width)
+    ys = np.arange(grid.height)
+    xg, yg  = np.meshgrid(xs, ys)
+    noise    = _pnoise_grid(grid, 38.0, 6, seed)
+    dist     = np.sqrt((xg - cx) ** 2 + (yg - cy) ** 2)
+    gradient = np.maximum(0.0, 1.0 - (dist / max_d) ** 1.4)
+    grid.altitude[:] = np.clip(noise * 0.55 + gradient * 0.65 - 0.18, 0.0, 1.0)
 
 
 def _generate_archipelago(grid: Grid, seed: int) -> None:
-    cx, cy  = grid.width / 2.0, grid.height / 2.0
-    max_d   = min(grid.width, grid.height) / 2.0
-    for y in range(grid.height):
-        for x in range(grid.width):
-            noise = _pnoise(x, y, 18.0, 5, seed)
-            edge  = max(0.0, 1.0 - (((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 / max_d) ** 2)
-            grid.altitude[y][x] = max(0.0, min(1.0, noise * 0.85 * edge - 0.12))
+    cx, cy = grid.width / 2.0, grid.height / 2.0
+    max_d  = min(grid.width, grid.height) / 2.0
+    xs = np.arange(grid.width)
+    ys = np.arange(grid.height)
+    xg, yg = np.meshgrid(xs, ys)
+    noise   = _pnoise_grid(grid, 18.0, 5, seed)
+    dist    = np.sqrt((xg - cx) ** 2 + (yg - cy) ** 2)
+    edge    = np.maximum(0.0, 1.0 - (dist / max_d) ** 2)
+    grid.altitude[:] = np.clip(noise * 0.85 * edge - 0.12, 0.0, 1.0)
 
 
 def _generate_mountain(grid: Grid, seed: int) -> None:
-    for y in range(grid.height):
-        for x in range(grid.width):
-            grid.altitude[y][x] = _pnoise(x, y, 28.0, 8, seed) ** 0.65
+    grid.altitude[:] = _pnoise_grid(grid, 28.0, 8, seed) ** 0.65
 
 
 def _generate_continent(grid: Grid, seed: int) -> None:
-    for y in range(grid.height):
-        for x in range(grid.width):
-            grid.altitude[y][x] = min(1.0, _pnoise(x, y, 65.0, 5, seed) * 0.65 + 0.22)
+    grid.altitude[:] = np.minimum(1.0, _pnoise_grid(grid, 65.0, 5, seed) * 0.65 + 0.22)
 
 
 # ── Outils d'édition ─────────────────────────────────────────────────────────
