@@ -18,7 +18,7 @@ avec les tests existants).
 """
 
 from dataclasses import dataclass, field
-from entities.species import Species
+from entities.base import Entity
 from entities.activity import _is_resting, _is_pre_rest  # noqa: F401 — ré-export
 from entities.movement import MovementMixin
 from entities.feeding import FeedingMixin
@@ -28,16 +28,9 @@ import random
 
 
 @dataclass
-class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
-    species: Species
-    x: float
-    y: float
-    age: int   = 0
-    energy: float = 100.0
-    alive: bool = True
+class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
     state: str = "wander"
     sex: str = "male"
-    reproduction_cooldown: int = 0
     wander_angle: float = 0.0
     explore_x: float = -1.0
     explore_y: float = -1.0
