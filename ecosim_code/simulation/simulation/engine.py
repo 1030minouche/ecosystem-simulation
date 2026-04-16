@@ -1,5 +1,6 @@
 import random
 import threading
+import numpy as np
 from world.grid import Grid
 from world.spatial_grid import SpatialGrid
 from entities.species import Species, sample_params
@@ -31,10 +32,22 @@ class SimulationEngine:
         self._species_raw_params   = {}   # raw params (avec *_std) par nom d'espèce
         self._species_counts       = {}   # {name: int} nb entités vivantes — mis à jour incrémentalement
         self._max_perception       = 10.0 # mis à jour dans add_species / reset
+        self._non_water_cells: np.ndarray | None = None  # calculé à la génération du terrain
+        self._all_cells:       np.ndarray | None = None
         self.lock = threading.Lock()      # protège individuals/plants contre les accès concurrents
         # Grilles spatiales réutilisées chaque tick (évite de réallouer les dicts internes)
         self._ind_grid   = SpatialGrid(1.0)
         self._plant_grid = SpatialGrid(1.0)
+
+    def _rebuild_valid_cells(self) -> None:
+        """Pré-calcule les indices de cellules non-eau (utilisé par add_species)."""
+        soil = np.array([[self.grid.cells[y][x].soil_type
+                          for x in range(self.grid.width)]
+                         for y in range(self.grid.height)])
+        self._non_water_cells = np.argwhere(soil != "water")   # shape (N, 2) — [y, x]
+        self._all_cells       = np.array([[y, x]
+                                          for y in range(self.grid.height)
+                                          for x in range(self.grid.width)])
 
     # ── Lecture seule ─────────────────────────────────────────────────────────
 
@@ -55,29 +68,24 @@ class SimulationEngine:
         self._species_raw_params[sp_template.name] = species_data
         self.species_list.append(sp_template)
 
-        # Spawn exactement `count` entités sur des cellules non-eau.
-        # Chaque animal reçoit son propre tirage de paramètres individuels.
-        # Les plantes partagent le template (pas de reproduction sexuée).
-        #
-        # On pré-calcule les cellules terrestres disponibles pour garantir
-        # un spawn correct même sur un terrain de type île (majorité d'eau).
-        can_swim = sp_template.can_swim or sp_template.is_flying()
-        if can_swim:
-            valid_cells = [(x, y)
-                           for y in range(self.grid.height)
-                           for x in range(self.grid.width)]
-        else:
-            valid_cells = [(x, y)
-                           for y in range(self.grid.height)
-                           for x in range(self.grid.width)
-                           if self.grid.cells[y][x].soil_type != "water"]
+        # Spawn exactement `count` entités sur des cellules valides.
+        # Les cellules sont pré-calculées une seule fois (évite 250 000 tuples par appel).
+        if self._non_water_cells is None:
+            self._rebuild_valid_cells()
 
-        if not valid_cells:
+        can_swim = sp_template.can_swim or sp_template.is_flying()
+        pool = self._all_cells if can_swim else self._non_water_cells
+
+        if pool is None or len(pool) == 0:
             return  # aucune cellule valide (terrain entièrement eau)
+
+        rng = np.random.default_rng()
+        choices = rng.integers(0, len(pool), size=count)
 
         spawned = 0
         while spawned < count:
-            x, y = random.choice(valid_cells)
+            idx = choices[spawned] if spawned < len(choices) else rng.integers(0, len(pool))
+            y, x = pool[idx]
             if sp_template.is_plant():
                 self.plants.append(Plant(species=sp_template, x=x, y=y))
             else:
