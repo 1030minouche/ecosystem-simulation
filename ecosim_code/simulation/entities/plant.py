@@ -25,11 +25,13 @@ class Plant(Entity):
             self.alive = False
             return []
 
-        cell = grid.cells[cy][cx]
+        temp     = float(grid.temperature[cy, cx])
+        humidity = float(grid.humidity[cy, cx])
+        stype    = grid.soil_type[cy, cx]
 
-        if (self.species.temp_min <= cell.temperature <= self.species.temp_max and
-                self.species.humidity_min <= cell.humidity <= self.species.humidity_max and
-                cell.soil_type != "water"):
+        if (self.species.temp_min <= temp <= self.species.temp_max and
+                self.species.humidity_min <= humidity <= self.species.humidity_max and
+                stype != "water"):
             self.growth = min(1.0, self.growth + self.species.growth_rate)
             self.energy += 0.05
         else:
@@ -50,7 +52,7 @@ class Plant(Entity):
             ny = int(self.y + math.sin(angle) * radius)
 
             if (0 <= nx < grid.width and 0 <= ny < grid.height
-                    and grid.cells[ny][nx].soil_type != "water"):
+                    and grid.soil_type[ny, nx] != "water"):
                 newborns.append(Plant(species=self.species, x=nx, y=ny))
                 self.reproduction_cooldown = self.species.reproduction_cooldown_length
 

@@ -2,7 +2,7 @@ def mark_dead(entity, cause: str, grid, tod: float, is_night: bool = False) -> N
     """Marque une entité comme morte et renseigne ses métadonnées de décès."""
     cx, cy = int(entity.x), int(entity.y)
     on_water = (0 <= cx < grid.width and 0 <= cy < grid.height
-                and grid.cells[cy][cx].soil_type == "water")
+                and grid.soil_type[cy, cx] == "water")
     entity.alive = False
     entity.death_cause = cause
     entity.death_tod = tod

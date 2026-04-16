@@ -154,11 +154,11 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
         cx, cy = int(self.x), int(self.y)
         if not (0 <= cx < grid.width and 0 <= cy < grid.height):
             return
-        cell = grid.cells[cy][cx]
-        dmg = self.species.energy_consumption * 12.5 * (0.3 if resting else 1.0)
-        if not (self.species.temp_min <= cell.temperature <= self.species.temp_max):
+        dmg  = self.species.energy_consumption * 12.5 * (0.3 if resting else 1.0)
+        temp = float(grid.temperature[cy, cx])
+        if not (self.species.temp_min <= temp <= self.species.temp_max):
             self.energy -= dmg
-        if cell.soil_type == "water" and not self.species.can_swim:
+        if grid.soil_type[cy, cx] == "water" and not self.species.can_swim:
             self.energy -= dmg
 
     # ── Prédateur le plus proche ──────────────────────────────────────────────
@@ -191,7 +191,7 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
     def _annotate_death(self, grid, resting: bool, time_of_day: float) -> None:
         cx, cy   = int(self.x), int(self.y)
         on_water = (0 <= cx < grid.width and 0 <= cy < grid.height
-                    and grid.cells[cy][cx].soil_type == "water")
+                    and grid.soil_type[cy, cx] == "water")
         if self.age >= self.species.max_age:
             cause = "vieillesse"
         elif on_water and resting:

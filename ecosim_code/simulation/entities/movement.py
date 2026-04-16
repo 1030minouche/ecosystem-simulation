@@ -28,7 +28,7 @@ class MovementMixin:
         if not need_new and not self.species.can_swim and not flies:
             tx, ty = int(self.explore_x), int(self.explore_y)
             if (0 <= tx < grid.width and 0 <= ty < grid.height
-                    and grid.cells[ty][tx].soil_type == "water"):
+                    and grid.soil_type[ty, tx] == "water"):
                 need_new = True
 
         if need_new:
@@ -39,7 +39,7 @@ class MovementMixin:
                 for _ in range(15):
                     ex = random.uniform(2, grid.width  - 3)
                     ey = random.uniform(2, grid.height - 3)
-                    if grid.cells[int(ey)][int(ex)].soil_type != "water":
+                    if grid.soil_type[int(ey), int(ex)] != "water":
                         self.explore_x, self.explore_y = ex, ey
                         break
                 else:
@@ -70,7 +70,7 @@ class MovementMixin:
         cx, cy = int(self.x), int(self.y)
         if not (0 <= cx < grid.width and 0 <= cy < grid.height):
             return
-        if grid.cells[cy][cx].soil_type != "water":
+        if grid.soil_type[cy, cx] != "water":
             return
         result = grid.nearest_non_water(cx, cy, 12)
         if result is None:
@@ -100,7 +100,7 @@ class MovementMixin:
         self.state = "seek_shelter"
         cx, cy = int(self.x), int(self.y)
         if (0 <= cx < grid.width and 0 <= cy < grid.height
-                and grid.cells[cy][cx].soil_type != "water"):
+                and grid.soil_type[cy, cx] != "water"):
             return
         result = grid.nearest_non_water(cx, cy, 8)
         if result is not None:

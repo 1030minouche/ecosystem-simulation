@@ -41,10 +41,7 @@ class SimulationEngine:
 
     def _rebuild_valid_cells(self) -> None:
         """Pré-calcule les indices de cellules non-eau (utilisé par add_species)."""
-        soil = np.array([[self.grid.cells[y][x].soil_type
-                          for x in range(self.grid.width)]
-                         for y in range(self.grid.height)])
-        self._non_water_cells = np.argwhere(soil != "water")   # shape (N, 2) — [y, x]
+        self._non_water_cells = np.argwhere(self.grid.soil_type != "water")  # shape (N, 2) [y, x]
         self._all_cells       = np.array([[y, x]
                                           for y in range(self.grid.height)
                                           for x in range(self.grid.width)])

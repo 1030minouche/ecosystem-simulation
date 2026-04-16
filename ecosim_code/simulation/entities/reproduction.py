@@ -23,7 +23,7 @@ def _spawn_offspring(parent, grid, species, energy_factor: float = 0.5,
     if not parent.species.can_swim:
         ibx, iby = int(bx), int(by)
         if (0 <= ibx < grid.width and 0 <= iby < grid.height
-                and grid.cells[iby][ibx].soil_type == "water"):
+                and grid.soil_type[iby, ibx] == "water"):
             bx, by = parent.x, parent.y
     return type(parent)(
         species=species,
