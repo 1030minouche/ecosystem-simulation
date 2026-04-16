@@ -60,7 +60,7 @@ class SimulationEngine:
         #
         # On pré-calcule les cellules terrestres disponibles pour garantir
         # un spawn correct même sur un terrain de type île (majorité d'eau).
-        can_swim = sp_template.can_swim or sp_template.type == "volant"
+        can_swim = sp_template.can_swim or sp_template.is_flying()
         if can_swim:
             valid_cells = [(x, y)
                            for y in range(self.grid.height)
@@ -77,7 +77,7 @@ class SimulationEngine:
         spawned = 0
         while spawned < count:
             x, y = random.choice(valid_cells)
-            if sp_template.type == "plant":
+            if sp_template.is_plant():
                 self.plants.append(Plant(species=sp_template, x=x, y=y))
             else:
                 sp_ind = Species(**sample_params(species_data))

@@ -19,7 +19,7 @@ class FeedingMixin:
         target    = None
         min_dist2 = self.species.perception_radius ** 2
 
-        if self.species.type in ("herbivore", "omnivore"):
+        if self.species.can_eat_plants():
             for plant in all_plants:
                 if not plant.alive or plant.species.name not in self.species.food_sources:
                     continue
@@ -30,15 +30,15 @@ class FeedingMixin:
                     min_dist2 = d2
                     target = plant
 
-        if self.species.type in ("carnivore", "omnivore", "volant"):
+        if self.species.can_eat_animals():
             for other in all_individuals:
                 if not other.alive or other is self:
                     continue
                 if other.species.name not in self.species.food_sources:
                     continue
                 # Un volant en vol ne peut être attrapé que par un autre volant
-                if other.species.type == "volant" and other.state == "en_vol":
-                    if self.species.type != "volant":
+                if other.species.is_flying() and other.state == "en_vol":
+                    if not self.species.is_flying():
                         continue
                 dx = other.x - self.x
                 dy = other.y - self.y

@@ -1,6 +1,15 @@
 from dataclasses import dataclass, field, fields as dc_fields
+from enum import Enum
 from typing import List
 import random
+
+
+class SpeciesType(str, Enum):
+    PLANT      = "plant"
+    HERBIVORE  = "herbivore"
+    CARNIVORE  = "carnivore"
+    OMNIVORE   = "omnivore"
+    FLYING     = "volant"
 
 # Paramètres dont la valeur est tirée selon N(µ, σ) au démarrage de chaque simulation
 _VARIABLE_FLOAT = {
@@ -84,6 +93,21 @@ class Species:
     @property
     def nocturnal(self) -> bool:
         return self.activity_pattern == "nocturnal"
+
+    def is_flying(self) -> bool:
+        return self.type == SpeciesType.FLYING
+
+    def is_plant(self) -> bool:
+        return self.type == SpeciesType.PLANT
+
+    def is_predator(self) -> bool:
+        return self.type in (SpeciesType.CARNIVORE, SpeciesType.OMNIVORE)
+
+    def can_eat_plants(self) -> bool:
+        return self.type in (SpeciesType.HERBIVORE, SpeciesType.OMNIVORE)
+
+    def can_eat_animals(self) -> bool:
+        return self.type in (SpeciesType.CARNIVORE, SpeciesType.OMNIVORE, SpeciesType.FLYING)
 
     # Capacités physiques
     can_swim: bool = False
