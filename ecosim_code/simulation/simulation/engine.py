@@ -16,6 +16,7 @@ from monitoring.death_log import DeathLogger
 from simulation.utils.counting import count_by_species
 from simulation.species_registry import SpeciesRegistry
 from simulation.snapshotter import Snapshotter
+from simulation.snapshot_view import SimulationSnapshot, EntityView
 from simulation.engine_const import DAY_LENGTH, SIM_YEAR
 
 
@@ -106,6 +107,39 @@ class SimulationEngine:
 
     def generate_report(self) -> str:
         return self._snapshotter.generate_report()
+
+    # ── Snapshot immuable pour le viewer ─────────────────────────────────────
+
+    def snapshot_view(self) -> SimulationSnapshot:
+        """Prend le verrou, copie l'état nécessaire, et retourne un snapshot immuable."""
+        with self.lock:
+            plants_views = tuple(
+                EntityView(
+                    x=p.x, y=p.y,
+                    species_name=p.species.name,
+                    energy=p.energy, alive=p.alive,
+                    growth=p.growth, age=p.age,
+                )
+                for p in self.plants
+            )
+            inds_views = tuple(
+                EntityView(
+                    x=i.x, y=i.y,
+                    species_name=i.species.name,
+                    energy=i.energy, alive=i.alive,
+                    state=i.state, sex=i.sex,
+                    gestation_timer=i.gestation_timer,
+                    age=i.age,
+                )
+                for i in self.individuals
+            )
+            return SimulationSnapshot(
+                tick=self.tick_count,
+                plants=plants_views,
+                individuals=inds_views,
+                species_counts=self.species_counts,
+                terrain_altitude=self.grid.altitude,
+            )
 
     # ── Boucle de simulation ─────────────────────────────────────────────────
 
