@@ -49,7 +49,7 @@ class ReproductionMixin:
 
     # ── Tentative de reproduction ─────────────────────────────────────────────
 
-    def _try_reproduce(self, all_individuals, grid) -> list:
+    def _try_reproduce(self, all_individuals, grid, n_predators: int = 0) -> list:
         nearest_partner = None
         min_dist2 = (self.species.perception_radius * 3.0) ** 2
 
@@ -89,17 +89,10 @@ class ReproductionMixin:
             return []
 
         # ── Effet de peur sur la reproduction ──────────────────────────────
+        # n_predators est fourni par _nearest_predator pour éviter un double parcours.
         effective_rate = self.species.reproduction_rate
-        if self.species.fear_factor > 0:
-            r2 = self.species.perception_radius ** 2
-            n_pred = sum(
-                1 for other in all_individuals
-                if other.alive
-                and self.species.name in other.species.food_sources
-                and (other.x - self.x) ** 2 + (other.y - self.y) ** 2 < r2
-            )
-            if n_pred > 0:
-                effective_rate /= (1.0 + self.species.fear_factor * n_pred)
+        if self.species.fear_factor > 0 and n_predators > 0:
+            effective_rate /= (1.0 + self.species.fear_factor * n_predators)
 
         if random.random() >= effective_rate:
             return []

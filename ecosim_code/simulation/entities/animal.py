@@ -98,7 +98,7 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
             self._annotate_death(grid, resting, time_of_day)
             return newborns
 
-        predator = self._nearest_predator(all_individuals, time_of_day)
+        predator, n_predators = self._nearest_predator(all_individuals, time_of_day)
 
         if resting and predator is None:
             self.state = "au_sol" if self.species.is_flying() else "sleep"
@@ -121,7 +121,7 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
             self._flee(predator)
         elif self.state == "reproduce":
             repro_list = all_individuals_repro if all_individuals_repro is not None else all_individuals
-            newborns.extend(self._try_reproduce(repro_list, grid))
+            newborns.extend(self._try_reproduce(repro_list, grid, n_predators=n_predators))
         else:  # "wander", "en_vol"
             centroid = herd_centroids.get(self.species.name) if herd_centroids else None
             self._wander(grid, herd_centroid=centroid)
@@ -170,9 +170,12 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
 
     # ── Prédateur le plus proche ──────────────────────────────────────────────
 
-    def _nearest_predator(self, all_individuals, time_of_day: float):
+    def _nearest_predator(self, all_individuals, time_of_day: float) -> tuple:
+        """Retourne (prédateur_le_plus_proche | None, nombre_de_prédateurs_perçus)."""
         nearest       = None
         nearest_dist2 = self.species.perception_radius ** 2
+        r2            = nearest_dist2
+        count         = 0
         for other in all_individuals:
             if not other.alive or other is self:
                 continue
@@ -180,13 +183,15 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin):
                 continue
             if self.species.name not in other.species.food_sources:
                 continue
-            dx = other.x - self.x
-            dy = other.y - self.y
+            dx    = other.x - self.x
+            dy    = other.y - self.y
             dist2 = dx*dx + dy*dy
-            if dist2 < nearest_dist2:
-                nearest_dist2 = dist2
-                nearest = other
-        return nearest
+            if dist2 < r2:
+                count += 1
+                if dist2 < nearest_dist2:
+                    nearest_dist2 = dist2
+                    nearest = other
+        return nearest, count
 
     # ── Mort ─────────────────────────────────────────────────────────────────
 
