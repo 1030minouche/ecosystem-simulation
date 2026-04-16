@@ -165,15 +165,20 @@ class SimulationEngine:
         }
 
         # ── Animaux ──────────────────────────────────────────────────────────
+        # Rayons :
+        #   r_perc  = perception_radius → prédateurs, nourriture
+        #   r_repro = 3 × perception_radius → partenaire (reproduction._try_reproduce)
         time_of_day     = (self.tick_count % DAY_LENGTH) / DAY_LENGTH
         new_individuals = []
         for ind in self.individuals:
-            # Rayon de requête = 3× perception (couvre reproduction 3× + nourriture 1×)
-            r = ind.species.perception_radius * 3.0
-            nearby_inds   = ind_grid.query(ind.x, ind.y, r)
-            nearby_plants = plant_grid.query(ind.x, ind.y, r)
+            r_perc  = ind.species.perception_radius
+            r_repro = r_perc * 3.0
+            nearby_inds   = ind_grid.query(ind.x, ind.y, r_perc)
+            nearby_plants = plant_grid.query(ind.x, ind.y, r_perc)
+            nearby_repro  = ind_grid.query(ind.x, ind.y, r_repro)
             babies = ind.tick(self.grid, nearby_plants, nearby_inds, time_of_day,
-                              herd_centroids=herd_centroids)
+                              herd_centroids=herd_centroids,
+                              all_individuals_repro=nearby_repro)
             new_individuals.extend(babies)
 
         # Enregistrement des morts + mise à jour compteur d'espèces
