@@ -66,6 +66,7 @@ class Species:
     energy_start: float = 100.0
     energy_consumption: float = 1.0  # par tick
     energy_from_food: float = 50.0
+    bite_size: float = 0.35          # fraction de energy_start de la cible prélevée par morsure
 
     # Comportement (animaux)
     speed: float = 1.0
