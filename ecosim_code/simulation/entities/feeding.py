@@ -75,9 +75,14 @@ class FeedingMixin:
         if not caught:
             return
 
-        # ── Mort de la proie — métadonnées pour le DeathLogger ────────────────
-        mark_dead(target, "predation", grid, time_of_day,
-                  is_night=_is_resting(time_of_day, target.species.activity_pattern))
-
-        self.energy = min(self.species.energy_start,
-                          self.energy + self.species.energy_from_food)
+        # ── Consommation incrémentale ─────────────────────────────────────────
+        # Une morsure prélève bite_size × energy_start de la cible.
+        # La cible peut survivre et nourrir plusieurs prédateurs.
+        tgt_start = max(target.species.energy_start, 1e-6)
+        bite = min(target.energy, self.species.bite_size * tgt_start)
+        gain = bite * (self.species.energy_from_food / tgt_start)
+        target.energy -= bite
+        self.energy = min(self.species.energy_start, self.energy + gain)
+        if target.energy <= 0:
+            mark_dead(target, "predation", grid, time_of_day,
+                      is_night=_is_resting(time_of_day, target.species.activity_pattern))
