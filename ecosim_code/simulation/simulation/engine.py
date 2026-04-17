@@ -148,7 +148,7 @@ class SimulationEngine:
         reg = self._registry
 
         # ── Plantes (1 tick sur 10) ───────────────────────────────────────────
-        if self.tick_count % 10 == 0:
+        if self.tick_count % 3 == 0:
             plant_count = len(self.plants)
             new_plants  = []
             for plant in self.plants:
