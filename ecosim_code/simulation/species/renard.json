@@ -32,8 +32,7 @@
     "food_sources": [
       "Lapin",
       "Campagnol",
-      "Baies",
-      "Champignon"
+      "Baies"
     ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,
