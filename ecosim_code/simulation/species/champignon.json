@@ -1,9 +1,13 @@
 {
-  "count": 300,
+  "count": 350,
   "params": {
     "name": "Champignon",
     "type": "plant",
-    "color": [0.72, 0.55, 0.28],
+    "color": [
+      0.72,
+      0.55,
+      0.28
+    ],
     "temp_min": 4.0,
     "temp_max": 22.0,
     "humidity_min": 0.5,
@@ -26,7 +30,7 @@
     "perception_radius": 0.0,
     "perception_radius_std": 0.0,
     "food_sources": [],
-    "growth_rate": 2.2e-04,
+    "growth_rate": 0.00022,
     "growth_rate_std": 4e-05,
     "dispersal_radius": 3,
     "activity_pattern": "diurnal",

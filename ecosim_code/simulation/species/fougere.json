@@ -1,5 +1,5 @@
 {
-  "count": 400,
+  "count": 500,
   "params": {
     "name": "Fougere",
     "type": "plant",
@@ -30,7 +30,7 @@
     "perception_radius": 0.0,
     "perception_radius_std": 0.0,
     "food_sources": [],
-    "growth_rate": 2.5e-04,
+    "growth_rate": 0.00025,
     "growth_rate_std": 4e-05,
     "dispersal_radius": 5,
     "activity_pattern": "diurnal",

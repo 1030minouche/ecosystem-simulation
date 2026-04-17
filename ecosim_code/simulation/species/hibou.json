@@ -1,9 +1,13 @@
 {
-  "count": 15,
+  "count": 6,
   "params": {
     "name": "Hibou",
     "type": "volant",
-    "color": [0.68, 0.55, 0.32],
+    "color": [
+      0.68,
+      0.55,
+      0.32
+    ],
     "temp_min": -15.0,
     "temp_max": 36.0,
     "humidity_min": 0.1,
@@ -25,7 +29,10 @@
     "speed_std": 0.22,
     "perception_radius": 28.0,
     "perception_radius_std": 2.0,
-    "food_sources": ["Campagnol", "Lapin"],
+    "food_sources": [
+      "Campagnol",
+      "Lapin"
+    ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,
     "dispersal_radius": 0,

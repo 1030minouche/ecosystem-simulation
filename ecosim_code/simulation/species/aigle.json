@@ -1,14 +1,18 @@
 {
-  "count": 20,
+  "count": 6,
   "params": {
     "name": "Aigle",
     "type": "volant",
-    "color": [0.55, 0.38, 0.18],
+    "color": [
+      0.55,
+      0.38,
+      0.18
+    ],
     "temp_min": -10.0,
     "temp_max": 38.0,
     "humidity_min": 0.0,
     "humidity_max": 1.0,
-    "altitude_min": 0.30,
+    "altitude_min": 0.3,
     "altitude_max": 1.0,
     "reproduction_rate": 0.6,
     "reproduction_rate_std": 0.05,
@@ -25,7 +29,12 @@
     "speed_std": 0.25,
     "perception_radius": 30.0,
     "perception_radius_std": 2.0,
-    "food_sources": ["Lapin", "Cerf", "Campagnol", "Sanglier"],
+    "food_sources": [
+      "Lapin",
+      "Cerf",
+      "Campagnol",
+      "Sanglier"
+    ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,
     "dispersal_radius": 0,

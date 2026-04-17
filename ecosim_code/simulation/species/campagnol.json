@@ -1,9 +1,13 @@
 {
-  "count": 200,
+  "count": 120,
   "params": {
     "name": "Campagnol",
     "type": "herbivore",
-    "color": [0.5, 0.4, 0.3],
+    "color": [
+      0.5,
+      0.4,
+      0.3
+    ],
     "temp_min": -5.0,
     "temp_max": 32.0,
     "humidity_min": 0.2,
@@ -25,7 +29,11 @@
     "speed_std": 0.08,
     "perception_radius": 8.0,
     "perception_radius_std": 0.8,
-    "food_sources": ["Herbe", "Champignon", "Baies"],
+    "food_sources": [
+      "Herbe",
+      "Champignon",
+      "Baies"
+    ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,
     "dispersal_radius": 0,

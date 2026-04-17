@@ -1,9 +1,13 @@
 {
-  "count": 45,
+  "count": 40,
   "params": {
     "name": "Sanglier",
     "type": "omnivore",
-    "color": [0.28, 0.22, 0.18],
+    "color": [
+      0.28,
+      0.22,
+      0.18
+    ],
     "temp_min": -10.0,
     "temp_max": 34.0,
     "humidity_min": 0.3,
@@ -25,7 +29,12 @@
     "speed_std": 0.14,
     "perception_radius": 14.0,
     "perception_radius_std": 1.2,
-    "food_sources": ["Baies", "Fougere", "Champignon", "Herbe"],
+    "food_sources": [
+      "Baies",
+      "Fougere",
+      "Champignon",
+      "Herbe"
+    ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,
     "dispersal_radius": 0,

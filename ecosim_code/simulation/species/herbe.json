@@ -1,5 +1,5 @@
 {
-  "count": 600,
+  "count": 800,
   "params": {
     "name": "Herbe",
     "type": "plant",
@@ -30,7 +30,7 @@
     "perception_radius": 0.0,
     "perception_radius_std": 0.0,
     "food_sources": [],
-    "growth_rate": 3e-04,
+    "growth_rate": 0.0003,
     "growth_rate_std": 4e-05,
     "dispersal_radius": 6,
     "activity_pattern": "diurnal",
