@@ -22,13 +22,13 @@ class MovementMixin:
         dx = self.explore_x - self.x
         dy = self.explore_y - self.y
 
-        flies = self.species.type == "volant"
+        flies = self.species.is_flying()
 
         need_new = self.explore_x < 0 or (dx*dx + dy*dy) < 4.0
         if not need_new and not self.species.can_swim and not flies:
             tx, ty = int(self.explore_x), int(self.explore_y)
             if (0 <= tx < grid.width and 0 <= ty < grid.height
-                    and grid.cells[ty][tx].soil_type == "water"):
+                    and grid.soil_type[ty, tx] == "water"):
                 need_new = True
 
         if need_new:
@@ -39,7 +39,7 @@ class MovementMixin:
                 for _ in range(15):
                     ex = random.uniform(2, grid.width  - 3)
                     ey = random.uniform(2, grid.height - 3)
-                    if grid.cells[int(ey)][int(ex)].soil_type != "water":
+                    if grid.soil_type[int(ey), int(ex)] != "water":
                         self.explore_x, self.explore_y = ex, ey
                         break
                 else:
@@ -59,7 +59,7 @@ class MovementMixin:
         angle_diff = (target_angle - self.wander_angle + math.pi) % (2 * math.pi) - math.pi
         self.wander_angle += angle_diff * 0.3 + random.uniform(-0.15, 0.15)
         # Les volants en vol bénéficient d'un bonus de vitesse (+40%)
-        air_bonus = 1.4 if self.species.type == "volant" and self.state == "en_vol" else 1.0
+        air_bonus = 1.4 if self.species.is_flying() and self.state == "en_vol" else 1.0
         step = self.species.speed / TICKS_PER_SECOND * speed_factor * air_bonus
         self.x += math.cos(self.wander_angle) * step
         self.y += math.sin(self.wander_angle) * step
@@ -70,22 +70,12 @@ class MovementMixin:
         cx, cy = int(self.x), int(self.y)
         if not (0 <= cx < grid.width and 0 <= cy < grid.height):
             return
-        if grid.cells[cy][cx].soil_type != "water":
+        if grid.soil_type[cy, cx] != "water":
             return
-        best_x, best_y, best_d2 = -1, -1, float("inf")
-        for dy in range(-12, 13):
-            for dx in range(-12, 13):
-                nx, ny = cx + dx, cy + dy
-                if not (0 <= nx < grid.width and 0 <= ny < grid.height):
-                    continue
-                if grid.cells[ny][nx].soil_type == "water":
-                    continue
-                d2 = dx*dx + dy*dy
-                if d2 < best_d2:
-                    best_d2 = d2
-                    best_x, best_y = nx, ny
-        if best_x < 0:
+        result = grid.nearest_non_water(cx, cy, 12)
+        if result is None:
             return
+        best_x, best_y = result
         ddx = best_x - self.x
         ddy = best_y - self.y
         dist = max(math.hypot(ddx, ddy), 0.01)
@@ -110,21 +100,11 @@ class MovementMixin:
         self.state = "seek_shelter"
         cx, cy = int(self.x), int(self.y)
         if (0 <= cx < grid.width and 0 <= cy < grid.height
-                and grid.cells[cy][cx].soil_type != "water"):
+                and grid.soil_type[cy, cx] != "water"):
             return
-        best_x, best_y, best_dist2 = -1, -1, float("inf")
-        for dy in range(-8, 9):
-            for dx in range(-8, 9):
-                nx, ny = cx + dx, cy + dy
-                if not (0 <= nx < grid.width and 0 <= ny < grid.height):
-                    continue
-                if grid.cells[ny][nx].soil_type == "water":
-                    continue
-                d2 = dx*dx + dy*dy
-                if d2 < best_dist2:
-                    best_dist2 = d2
-                    best_x, best_y = nx, ny
-        if best_x >= 0:
+        result = grid.nearest_non_water(cx, cy, 8)
+        if result is not None:
+            best_x, best_y = result
             ddx = best_x - self.x
             ddy = best_y - self.y
             dist = max(math.hypot(ddx, ddy), 0.01)

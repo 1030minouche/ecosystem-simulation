@@ -21,18 +21,8 @@ except ImportError:
 
 from world.terrain import (
     modify_altitude, paint_cell, draw_river, place_lake,
-    generate_terrain,
+    generate_terrain, BIOME_PALETTE, altitude_to_rgb,
 )
-
-
-# ── Palette identique à TerrainGenerator.cs ──────────────────────────────────
-def _alt_to_rgb(a: float):
-    if a < 0.30: return (25,  77, 204)
-    if a < 0.40: return (230, 217, 153)
-    if a < 0.60: return (51,  153,  51)
-    if a < 0.75: return (77,  128,  26)
-    if a < 0.85: return (128, 102,  77)
-    return                (230, 230, 230)
 
 
 def _render_terrain(alt: np.ndarray, size: int) -> "ImageTk.PhotoImage or None":
@@ -43,12 +33,8 @@ def _render_terrain(alt: np.ndarray, size: int) -> "ImageTk.PhotoImage or None":
     sampled = alt[np.ix_(gy, gx)]          # (size, size)
 
     img = np.zeros((size, size, 3), dtype=np.uint8)
-    img[:] = (25, 77, 204)                 # eau par défaut
-    img[sampled >= 0.30] = (230, 217, 153) # sable
-    img[sampled >= 0.40] = (51,  153,  51) # plaine
-    img[sampled >= 0.60] = (77,  128,  26) # forêt
-    img[sampled >= 0.75] = (128, 102,  77) # montagne
-    img[sampled >= 0.85] = (230, 230, 230) # neige
+    for threshold, color in BIOME_PALETTE:
+        img[sampled >= threshold] = color
 
     if _HAS_PIL:
         return ImageTk.PhotoImage(Image.fromarray(img, "RGB"))

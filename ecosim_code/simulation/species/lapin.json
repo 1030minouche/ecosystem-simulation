@@ -1,5 +1,5 @@
 {
-  "count": 150,
+  "count": 100,
   "params": {
     "name": "Lapin",
     "type": "herbivore",
@@ -30,7 +30,9 @@
     "perception_radius": 12.0,
     "perception_radius_std": 1.0,
     "food_sources": [
-      "Herbe"
+      "Herbe",
+      "Champignon",
+      "Baies"
     ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,

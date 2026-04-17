@@ -1,18 +1,11 @@
 from dataclasses import dataclass
-from entities.species import Species
+from entities.base import Entity
 import random
 import math
 
 @dataclass
-class Plant:
-    species: Species
-    x: int
-    y: int
-    age: int = 0
-    energy: float = 100.0
-    alive: bool = True
-    growth: float = 0.1
-    reproduction_cooldown: int = 0   # ticks restants avant la prochaine reproduction 
+class Plant(Entity):
+    growth: float = 0.1   # taux de croissance courant [0, 1]
 
     def tick(self, grid, plant_count: int):
         """
@@ -32,11 +25,13 @@ class Plant:
             self.alive = False
             return []
 
-        cell = grid.cells[cy][cx]
+        temp     = float(grid.temperature[cy, cx])
+        humidity = float(grid.humidity[cy, cx])
+        stype    = grid.soil_type[cy, cx]
 
-        if (self.species.temp_min <= cell.temperature <= self.species.temp_max and
-                self.species.humidity_min <= cell.humidity <= self.species.humidity_max and
-                cell.soil_type != "water"):
+        if (self.species.temp_min <= temp <= self.species.temp_max and
+                self.species.humidity_min <= humidity <= self.species.humidity_max and
+                stype != "water"):
             self.growth = min(1.0, self.growth + self.species.growth_rate)
             self.energy += 0.05
         else:
@@ -57,7 +52,7 @@ class Plant:
             ny = int(self.y + math.sin(angle) * radius)
 
             if (0 <= nx < grid.width and 0 <= ny < grid.height
-                    and grid.cells[ny][nx].soil_type != "water"):
+                    and grid.soil_type[ny, nx] != "water"):
                 newborns.append(Plant(species=self.species, x=nx, y=ny))
                 self.reproduction_cooldown = self.species.reproduction_cooldown_length
 
