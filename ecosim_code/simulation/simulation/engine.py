@@ -18,10 +18,13 @@ from simulation.species_registry import SpeciesRegistry
 from simulation.snapshotter import Snapshotter
 from simulation.snapshot_view import SimulationSnapshot, EntityView
 from simulation.engine_const import DAY_LENGTH, SIM_YEAR
+import entities.rng as _entity_rng_module
 
 
 class SimulationEngine:
-    def __init__(self, grid: Grid):
+    def __init__(self, grid: Grid, seed: int | None = None):
+        _entity_rng_module.rng.reset(seed)
+        self.seed       = seed
         self.grid       = grid
         self.running    = False
         self.tick_count = DAY_LENGTH // 2
