@@ -86,6 +86,7 @@ class SimulationManager:
                 params["color"] = tuple(params["color"])
                 engine.add_species(params, count=sp["count"])
 
+            total    = config["ticks"]
             out_path = Path(config.get("out_path", "runs/sim.db"))
             out_path.parent.mkdir(parents=True, exist_ok=True)
             recorder = Recorder(out_path, frame_renderer=frame_renderer)
@@ -95,7 +96,6 @@ class SimulationManager:
 
             t0         = time.monotonic()
             start_tick = engine.tick_count
-            total      = config["ticks"]
 
             def on_progress(tick: int, counts: dict) -> None:
                 elapsed = time.monotonic() - t0
