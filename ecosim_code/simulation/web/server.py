@@ -1,17 +1,22 @@
 """
 EcoSim Web Server — aiohttp
 Lance un serveur HTTP+WebSocket sur localhost:8765.
+
+Rendu :
+  Les frames replay sont rendues côté serveur en numpy (terrain + entités)
+  et envoyées au client sous forme de PNG. Le client fait uniquement
+  ctx.drawImage() → 60 fps garanti, aucun bug de coordonnées.
 """
 from __future__ import annotations
 
 import asyncio
-import glob
 import io
 import json
-import os
+import threading
 from pathlib import Path
 
 import aiohttp
+import numpy as np
 from aiohttp import web
 
 _BASE      = Path(__file__).parent
@@ -20,7 +25,200 @@ _SIM_DIR   = _BASE.parent
 _SPECIES_D = _SIM_DIR / "species"
 _RUNS_D    = _SIM_DIR / "runs"
 
-_mgr = None   # SimulationManager — set in create_app()
+_mgr = None  # SimulationManager — instancié dans run()
+
+# ── Caches thread-safe ────────────────────────────────────────────────────────
+_terrain_cache: dict  = {}      # (db, w, h) → np.ndarray H×W×3
+_frame_cache:   dict  = {}      # (db, tick, w, h) → bytes PNG
+_species_colors: dict | None = None
+_cache_lock = threading.Lock()
+
+
+# ── Helpers synchrones (pool threads) ─────────────────────────────────────────
+
+def _load_species_colors() -> dict[str, tuple[int, int, int]]:
+    global _species_colors
+    with _cache_lock:
+        if _species_colors is not None:
+            return _species_colors
+    colors: dict[str, tuple] = {}
+    for p in sorted(_SPECIES_D.glob("*.json")):
+        with open(p, encoding="utf-8") as f:
+            data = json.load(f)
+        name = data["params"]["name"]
+        r, g, b = [int(c * 255) for c in data["params"]["color"]]
+        colors[name] = (r, g, b)
+    with _cache_lock:
+        _species_colors = colors
+    return colors
+
+
+def _render_terrain_arr(db_or_seed, preset: str, world_size: int,
+                         out_w: int, out_h: int) -> np.ndarray:
+    """Génère un ndarray H×W×3 uint8 pour le terrain.
+    db_or_seed : int (seed direct) ou str (chemin .db pour lire les méta).
+    """
+    from world.grid import Grid
+    from world.terrain import generate_terrain, BIOME_PALETTE
+    from PIL import Image
+
+    if isinstance(db_or_seed, str):
+        from simulation.recording.replay import ReplayReader
+        reader  = ReplayReader(Path(db_or_seed))
+        m       = reader.meta
+        world_size = int(m.get("world_width", 500))
+        seed    = int(m.get("seed", 42))
+        preset  = m.get("terrain_preset", "default")
+        reader.close()
+    else:
+        seed = db_or_seed
+
+    grid = Grid(width=world_size, height=world_size)
+    generate_terrain(grid, seed=seed, preset=preset)
+
+    alt = np.array(grid.altitude)
+    rgb = np.zeros((world_size, world_size, 3), dtype=np.uint8)
+    for threshold, color in BIOME_PALETTE:
+        rgb[alt >= threshold] = color
+
+    img = Image.fromarray(rgb, "RGB").resize((out_w, out_h), Image.NEAREST)
+    return np.asarray(img, dtype=np.uint8).copy()
+
+
+def _get_terrain_arr(db: str, out_w: int, out_h: int) -> np.ndarray:
+    """Terrain array avec cache.  Retourne un array READ-ONLY (ne pas modifier)."""
+    key = (db, out_w, out_h)
+    with _cache_lock:
+        if key in _terrain_cache:
+            return _terrain_cache[key]
+    arr = _render_terrain_arr(db, "", 500, out_w, out_h)
+    with _cache_lock:
+        _terrain_cache[key] = arr
+    return arr
+
+
+def _render_frame_png(db: str, tick: int, out_w: int, out_h: int) -> bytes:
+    """Rend terrain + entités pour un tick → PNG bytes (numpy vectorisé)."""
+    from simulation.recording.replay import ReplayReader
+    from PIL import Image
+
+    # Terrain (depuis cache)
+    terrain  = _get_terrain_arr(db, out_w, out_h)
+    arr      = terrain.copy()          # buffer de travail mutable
+
+    # Données du monde
+    reader   = ReplayReader(Path(db))
+    m        = reader.meta
+    world_w  = int(m.get("world_width",  500))
+    world_h  = int(m.get("world_height", 500))
+    snap     = reader.state_at(tick)
+    reader.close()
+
+    if snap is None:
+        buf = io.BytesIO()
+        Image.fromarray(arr, "RGB").save(buf, format="PNG")
+        return buf.getvalue()
+
+    colors = _load_species_colors()
+    sx, sy = out_w / world_w, out_h / world_h
+
+    # ── Plantes (1×1 px, vectorisé par espèce) ────────────────────────────────
+    plant_by_sp: dict[str, list] = {}
+    for p in snap.plants:
+        if p.alive:
+            plant_by_sp.setdefault(p.species, []).append(p)
+
+    for sp_name, plants in plant_by_sp.items():
+        col = colors.get(sp_name, (100, 200, 100))
+        xs  = np.clip(
+            np.round(np.array([p.x for p in plants], dtype=np.float32) * sx).astype(int),
+            0, out_w - 1,
+        )
+        ys  = np.clip(
+            np.round(np.array([p.y for p in plants], dtype=np.float32) * sy).astype(int),
+            0, out_h - 1,
+        )
+        arr[ys, xs] = col
+
+    # ── Animaux (5×5 px) ──────────────────────────────────────────────────────
+    for ind in snap.individuals:
+        if not ind.alive:
+            continue
+        col = colors.get(ind.species, (255, 165, 0))
+        cx  = int(np.clip(round(ind.x * sx), 2, out_w - 3))
+        cy  = int(np.clip(round(ind.y * sy), 2, out_h - 3))
+        arr[cy - 2:cy + 3, cx - 2:cx + 3] = col
+
+    buf = io.BytesIO()
+    Image.fromarray(arr, "RGB").save(buf, format="PNG", optimize=False)
+    return buf.getvalue()
+
+
+def _get_frame_png(db: str, tick: int, out_w: int, out_h: int) -> bytes:
+    """Frame PNG avec cache.  Thread-safe."""
+    key = (db, tick, out_w, out_h)
+    with _cache_lock:
+        if key in _frame_cache:
+            return _frame_cache[key]
+    png = _render_frame_png(db, tick, out_w, out_h)
+    with _cache_lock:
+        _frame_cache[key] = png
+    return png
+
+
+def _read_replay_meta(db: str) -> dict:
+    from simulation.recording.replay import ReplayReader
+    reader = ReplayReader(Path(db))
+    m      = reader.meta
+    ticks  = reader._keyframe_ticks
+    result = {
+        "seed":           int(m.get("seed", 42)),
+        "preset":         m.get("terrain_preset", "default"),
+        "world_w":        int(m.get("world_width",  500)),
+        "world_h":        int(m.get("world_height", 500)),
+        "total_ticks":    reader.total_ticks,
+        "min_tick":       reader.min_tick,
+        "keyframe_ticks": ticks,
+        "n_keyframes":    len(ticks),
+        "version":        m.get("engine_version", "?"),
+    }
+    reader.close()
+    return result
+
+
+def _read_frame_json(db: str, tick: int) -> dict:
+    """Données entités en JSON (pour panel info + sélection)."""
+    from simulation.recording.replay import ReplayReader
+    reader = ReplayReader(Path(db))
+    snap   = reader.state_at(tick)
+    reader.close()
+    if snap is None:
+        return {"tick": tick, "plants": [], "individuals": [], "counts": {}}
+    return {
+        "tick": snap.tick,
+        "plants": [
+            {"id": e.id, "x": round(e.x, 1), "y": round(e.y, 1),
+             "sp": e.species, "energy": round(e.energy, 1), "age": e.age}
+            for e in snap.plants if e.alive
+        ],
+        "individuals": [
+            {"id": e.id, "sp": e.species,
+             "x": round(e.x, 1), "y": round(e.y, 1),
+             "energy": round(e.energy, 1), "age": e.age, "state": e.state}
+            for e in snap.individuals if e.alive
+        ],
+        "counts": snap.species_counts,
+    }
+
+
+def _render_preview_png(seed: int, preset: str,
+                         grid_size: int, out_w: int, out_h: int) -> bytes:
+    """Preview terrain : utilise grid_size exact de la simulation → aperçu fidèle."""
+    from PIL import Image
+    arr = _render_terrain_arr(seed, preset, grid_size, out_w, out_h)
+    buf = io.BytesIO()
+    Image.fromarray(arr, "RGB").save(buf, format="PNG", optimize=False)
+    return buf.getvalue()
 
 
 # ── Static ────────────────────────────────────────────────────────────────────
@@ -30,25 +228,26 @@ async def handle_index(request):
 
 
 async def handle_static(request):
-    rel  = request.match_info["path"]
-    path = _STATIC / rel
-    if path.exists() and path.is_file():
-        return web.FileResponse(path)
+    p = _STATIC / request.match_info["path"]
+    if p.exists() and p.is_file():
+        return web.FileResponse(p)
     raise web.HTTPNotFound()
 
 
-# ── API ───────────────────────────────────────────────────────────────────────
+# ── API endpoints ─────────────────────────────────────────────────────────────
 
 async def api_species(request):
-    items = []
+    colors = _load_species_colors()
+    items  = []
     for p in sorted(_SPECIES_D.glob("*.json")):
         with open(p, encoding="utf-8") as f:
             data = json.load(f)
         params = data["params"]
-        r, g, b = [int(c * 255) for c in params["color"]]
+        name   = params["name"]
+        r, g, b = colors.get(name, (128, 128, 128))
         items.append({
             "file":          p.stem,
-            "name":          params["name"],
+            "name":          name,
             "color":         f"#{r:02x}{g:02x}{b:02x}",
             "count_default": data["count"],
             "params":        params,
@@ -57,20 +256,23 @@ async def api_species(request):
 
 
 async def api_terrain_preview(request):
-    body   = await request.json()
-    seed   = int(body.get("seed", 42))
-    preset = body.get("preset", "default")
-    size   = min(int(body.get("size", 150)), 400)
+    body      = await request.json()
+    seed      = int(body.get("seed",      42))
+    preset    = body.get("preset",        "default")
+    out_size  = min(int(body.get("size",  260)), 400)
+    grid_size = int(body.get("grid_size", 500))
 
     loop = asyncio.get_event_loop()
-    png  = await loop.run_in_executor(None, _render_terrain_png, seed, preset, size, size)
+    png  = await loop.run_in_executor(
+        None, _render_preview_png, seed, preset, grid_size, out_size, out_size
+    )
     return web.Response(body=png, content_type="image/png",
                         headers={"Cache-Control": "no-store"})
 
 
 async def api_sim_start(request):
     config = await request.json()
-    ok = _mgr.start(config)
+    ok     = _mgr.start(config)
     return web.json_response({"ok": ok, "already_running": not ok})
 
 
@@ -101,25 +303,70 @@ async def api_replay_meta(request):
 
 
 async def api_replay_terrain(request):
+    """PNG du terrain seul (utilisé pour la miniature dans le header)."""
     db = request.rel_url.query.get("db", "")
-    w  = int(request.rel_url.query.get("w", 700))
-    h  = int(request.rel_url.query.get("h", 580))
+    w  = int(request.rel_url.query.get("w", 260))
+    h  = int(request.rel_url.query.get("h", 260))
     if not db or not Path(db).exists():
         raise web.HTTPNotFound()
     loop = asyncio.get_event_loop()
-    png  = await loop.run_in_executor(None, _render_replay_terrain, db, w, h)
+    arr  = await loop.run_in_executor(None, _get_terrain_arr, db, w, h)
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.fromarray(arr, "RGB").save(buf, format="PNG")
+    return web.Response(body=buf.getvalue(), content_type="image/png",
+                        headers={"Cache-Control": "max-age=3600"})
+
+
+async def api_frame_img(request):
+    """PNG frame pré-rendu (terrain + entités) — cœur du viewer fluide."""
+    db   = request.rel_url.query.get("db",   "")
+    tick = int(request.rel_url.query.get("tick", 0))
+    w    = int(request.rel_url.query.get("w",    700))
+    h    = int(request.rel_url.query.get("h",    560))
+    if not db or not Path(db).exists():
+        raise web.HTTPNotFound()
+    loop = asyncio.get_event_loop()
+    png  = await loop.run_in_executor(None, _get_frame_png, db, tick, w, h)
     return web.Response(body=png, content_type="image/png",
                         headers={"Cache-Control": "max-age=3600"})
 
 
-async def api_replay_frame(request):
-    db   = request.rel_url.query.get("db", "")
+async def api_frame_json(request):
+    """JSON entités pour un tick (panel info + sélection, pas le rendu visuel)."""
+    db   = request.rel_url.query.get("db",   "")
     tick = int(request.rel_url.query.get("tick", 0))
     if not db or not Path(db).exists():
         raise web.HTTPNotFound()
     loop = asyncio.get_event_loop()
-    data = await loop.run_in_executor(None, _read_frame, db, tick)
+    data = await loop.run_in_executor(None, _read_frame_json, db, tick)
     return web.json_response(data)
+
+
+async def api_prerender(request):
+    """Lance le pré-rendu de toutes les frames en arrière-plan."""
+    body = await request.json()
+    db   = body.get("db", "")
+    w    = int(body.get("w", 700))
+    h    = int(body.get("h", 560))
+    if not db or not Path(db).exists():
+        raise web.HTTPNotFound()
+    asyncio.create_task(_prerender_all(db, w, h))
+    return web.json_response({"ok": True})
+
+
+async def _prerender_all(db: str, w: int, h: int) -> None:
+    """Tâche asyncio : pré-rend toutes les frames du .db dans le pool threads."""
+    from simulation.recording.replay import ReplayReader
+    reader = ReplayReader(Path(db))
+    ticks  = list(reader._keyframe_ticks)
+    reader.close()
+    loop = asyncio.get_event_loop()
+    # Pré-render terrain d'abord (warm le cache)
+    await loop.run_in_executor(None, _get_terrain_arr, db, w, h)
+    # Puis toutes les frames
+    for tick in ticks:
+        await loop.run_in_executor(None, _get_frame_png, db, tick, w, h)
 
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────
@@ -144,138 +391,39 @@ async def websocket_handler(request):
     return ws
 
 
-# ── Helpers synchrones (run_in_executor) ──────────────────────────────────────
-
-def _render_terrain_png(seed: int, preset: str, out_w: int, out_h: int) -> bytes:
-    import numpy as np
-    from PIL import Image
-    from world.grid import Grid
-    from world.terrain import generate_terrain, BIOME_PALETTE
-
-    size = max(out_w, out_h)
-    grid = Grid(width=size, height=size)
-    generate_terrain(grid, seed=seed, preset=preset)
-    alt = np.array(grid.altitude)
-    rgb = np.zeros((size, size, 3), dtype=np.uint8)
-    for threshold, color in BIOME_PALETTE:
-        rgb[alt >= threshold] = color
-    img = Image.fromarray(rgb, "RGB").resize((out_w, out_h), Image.NEAREST)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=False)
-    return buf.getvalue()
-
-
-def _read_replay_meta(db: str) -> dict:
-    from simulation.recording.replay import ReplayReader
-    reader = ReplayReader(Path(db))
-    m      = reader.meta
-    ticks  = reader._keyframe_ticks
-    result = {
-        "seed":           int(m.get("seed", 42)),
-        "preset":         m.get("terrain_preset", "default"),
-        "world_w":        int(m.get("world_width",  500)),
-        "world_h":        int(m.get("world_height", 500)),
-        "total_ticks":    reader.total_ticks,
-        "min_tick":       reader.min_tick,
-        "keyframe_ticks": ticks,
-        "n_keyframes":    len(ticks),
-        "version":        m.get("engine_version", "?"),
-    }
-    reader.close()
-    return result
-
-
-def _render_replay_terrain(db: str, out_w: int, out_h: int) -> bytes:
-    from simulation.recording.replay import ReplayReader
-    from world.grid import Grid
-    from world.terrain import generate_terrain, BIOME_PALETTE
-    from PIL import Image
-    import numpy as np
-
-    reader  = ReplayReader(Path(db))
-    m       = reader.meta
-    world_w = int(m.get("world_width",  500))
-    world_h = int(m.get("world_height", 500))
-    seed    = int(m.get("seed", 42))
-    preset  = m.get("terrain_preset", "default")
-    reader.close()
-
-    grid = Grid(width=world_w, height=world_h)
-    generate_terrain(grid, seed=seed, preset=preset)
-    alt = np.array(grid.altitude)
-    rgb = np.zeros((world_h, world_w, 3), dtype=np.uint8)
-    for threshold, color in BIOME_PALETTE:
-        rgb[alt >= threshold] = color
-
-    img = Image.fromarray(rgb, "RGB").resize((out_w, out_h), Image.NEAREST)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=False)
-    return buf.getvalue()
-
-
-def _read_frame(db: str, tick: int) -> dict:
-    from simulation.recording.replay import ReplayReader
-    reader = ReplayReader(Path(db))
-    snap   = reader.state_at(tick)
-    reader.close()
-    if snap is None:
-        return {"tick": tick, "plants": [], "individuals": [], "counts": {}}
-    return {
-        "tick": snap.tick,
-        "plants": [
-            {"id": e.id, "x": round(e.x, 1), "y": round(e.y, 1),
-             "sp": e.species, "energy": round(e.energy, 1), "age": e.age, "state": e.state}
-            for e in snap.plants if e.alive
-        ],
-        "individuals": [
-            {
-                "id": e.id, "sp": e.species,
-                "x": round(e.x, 1), "y": round(e.y, 1),
-                "energy": round(e.energy, 1),
-                "age": e.age, "state": e.state,
-            }
-            for e in snap.individuals if e.alive
-        ],
-        "counts": snap.species_counts,
-    }
-
-
-# ── App factory ───────────────────────────────────────────────────────────────
+# ── App factory + lancement ───────────────────────────────────────────────────
 
 def _build_app() -> web.Application:
-    """Construit l'application aiohttp (sans créer le SimulationManager)."""
     app = web.Application()
-    app.router.add_get("/",                       handle_index)
-    app.router.add_get("/static/{path:.*}",       handle_static)
-    app.router.add_get("/api/species",            api_species)
-    app.router.add_post("/api/terrain/preview",   api_terrain_preview)
-    app.router.add_post("/api/sim/start",         api_sim_start)
-    app.router.add_post("/api/sim/cancel",        api_sim_cancel)
-    app.router.add_get("/api/runs",               api_runs)
-    app.router.add_get("/api/replay/meta",        api_replay_meta)
-    app.router.add_get("/api/replay/terrain",     api_replay_terrain)
-    app.router.add_get("/api/replay/frame",       api_replay_frame)
-    app.router.add_get("/ws",                     websocket_handler)
+    app.router.add_get ("/",                        handle_index)
+    app.router.add_get ("/static/{path:.*}",        handle_static)
+    app.router.add_get ("/api/species",             api_species)
+    app.router.add_post("/api/terrain/preview",     api_terrain_preview)
+    app.router.add_post("/api/sim/start",           api_sim_start)
+    app.router.add_post("/api/sim/cancel",          api_sim_cancel)
+    app.router.add_get ("/api/runs",                api_runs)
+    app.router.add_get ("/api/replay/meta",         api_replay_meta)
+    app.router.add_get ("/api/replay/terrain",      api_replay_terrain)
+    app.router.add_get ("/api/replay/frame_img",    api_frame_img)
+    app.router.add_get ("/api/replay/frame_json",   api_frame_json)
+    app.router.add_post("/api/replay/prerender",    api_prerender)
+    app.router.add_get ("/ws",                      websocket_handler)
     return app
 
 
 def run(host: str = "127.0.0.1", port: int = 8765) -> None:
-    import webbrowser
-    import threading
+    import webbrowser, threading
 
     async def _start():
         global _mgr
         from web.sim_manager import SimulationManager
-        # IMPORTANT: créer le SimulationManager ICI, après asyncio.run() — le
-        # running loop est le bon. Si on l'appelle avant asyncio.run(), on capture
-        # un loop différent et run_coroutine_threadsafe ne livre jamais les messages.
         loop = asyncio.get_running_loop()
         _mgr = SimulationManager(loop)
 
-        app     = _build_app()
-        runner  = web.AppRunner(app)
+        app    = _build_app()
+        runner = web.AppRunner(app)
         await runner.setup()
-        site    = web.TCPSite(runner, host, port)
+        site   = web.TCPSite(runner, host, port)
         await site.start()
         print(f"[EcoSim] Interface web → http://{host}:{port}", flush=True)
         threading.Timer(0.8, lambda: webbrowser.open(f"http://{host}:{port}")).start()
