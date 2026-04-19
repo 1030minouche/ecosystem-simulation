@@ -89,6 +89,8 @@ class SimulationManager:
             total    = config["ticks"]
             out_path = Path(config.get("out_path", "runs/sim.db"))
             out_path.parent.mkdir(parents=True, exist_ok=True)
+            if out_path.exists():
+                out_path.unlink()   # repart toujours d'un .db vierge
             recorder = Recorder(out_path, frame_renderer=frame_renderer)
             recorder.write_engine_meta(engine)
             recorder.write_meta("terrain_preset", preset)
