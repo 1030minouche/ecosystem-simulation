@@ -171,15 +171,54 @@
 
         <!-- Side panel -->
         <div class="replay-side">
-          <div class="panel-title">POPULATIONS</div>
+
+          <!-- Progression -->
+          <div class="panel-title">PROGRESSION</div>
+          <div class="sim-progress-block">
+            <div class="sim-prog-row">
+              <span class="sim-prog-lbl">Frame</span>
+              <span id="si-frame" class="sim-prog-val">— / —</span>
+            </div>
+            <div class="sim-prog-row">
+              <span class="sim-prog-lbl">Tick</span>
+              <span id="si-tick" class="sim-prog-val">—</span>
+            </div>
+            <div class="sim-prog-row">
+              <span class="sim-prog-lbl">Jour simulé</span>
+              <span id="si-day" class="sim-prog-val">—</span>
+            </div>
+            <div class="sim-prog-row">
+              <span class="sim-prog-lbl">Vitesse replay</span>
+              <span id="si-speed" class="sim-prog-val">×1</span>
+            </div>
+            <div class="sim-track-wrap">
+              <div id="sim-track-fill" class="sim-track-fill"></div>
+            </div>
+          </div>
+
+          <!-- Populations -->
+          <div class="panel-title" style="margin-top:10px">POPULATIONS</div>
           <div id="pop-panel" class="pop-panel"></div>
 
+          <!-- Graphe -->
           <div class="panel-title" style="margin-top:10px">GRAPHE</div>
-          <canvas id="graph-canvas" width="290" height="115" class="graph-canvas"></canvas>
+          <canvas id="graph-canvas" width="276" height="110" class="graph-canvas"></canvas>
 
+          <!-- Entité -->
           <div class="panel-title" style="margin-top:10px">ENTITÉ SÉLECTIONNÉE</div>
           <div id="entity-card" class="entity-card">
             <p class="entity-placeholder">— cliquez une entité</p>
+          </div>
+
+          <!-- Config sim -->
+          <div class="panel-title" style="margin-top:10px">CONFIG SIMULATION</div>
+          <div class="sim-info-block">
+            <div class="sim-info-row"><span class="sim-info-lbl">Seed</span><span id="si-seed" class="sim-info-val">—</span></div>
+            <div class="sim-info-row"><span class="sim-info-lbl">Preset</span><span id="si-preset" class="sim-info-val">—</span></div>
+            <div class="sim-info-row"><span class="sim-info-lbl">Grille</span><span id="si-grid" class="sim-info-val">—</span></div>
+            <div class="sim-info-row"><span class="sim-info-lbl">Durée</span><span id="si-maxTicks" class="sim-info-val">—</span></div>
+            <div class="sim-info-row"><span class="sim-info-lbl">Keyframes</span><span id="si-kf" class="sim-info-val">—</span></div>
+            <div class="sim-info-row"><span class="sim-info-lbl">Version</span><span id="si-ver" class="sim-info-val">—</span></div>
           </div>
 
           <p class="kbd-hints">

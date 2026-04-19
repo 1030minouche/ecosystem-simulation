@@ -18,6 +18,7 @@
 const CANVAS_W   = 720;
 const CANVAS_H   = 576;
 const PREVIEW_SZ = 260;
+const DAY_LENGTH = 1200;   // doit correspondre à engine_const.DAY_LENGTH
 
 const SPEED_LEVELS = [0.25, 0.5, 1, 2, 4, 8, 16, 32];
 const GROUPS = [
@@ -376,6 +377,16 @@ async function openReplay(dbPath) {
   $('entity-card').innerHTML    = '<p class="entity-placeholder">— cliquez une entité</p>';
   clearGraphCanvas();
 
+  // Réinitialiser le bloc progression
+  $('si-frame').textContent = '— / —';
+  $('si-tick').textContent  = '—';
+  $('si-day').textContent   = '—';
+  $('si-speed').textContent = `×${SPEED_LEVELS[speedIdx]}`;
+  $('sim-track-fill').style.width = '0%';
+  // Réinitialiser le bloc config
+  ['si-seed','si-preset','si-grid','si-maxTicks','si-kf','si-ver']
+    .forEach(id => $(id).textContent = '—');
+
   showPage('replay');
   setCanvasOverlay('Chargement des métadonnées…');
 
@@ -389,6 +400,14 @@ async function openReplay(dbPath) {
       `seed=${replayMeta.seed} · ${replayMeta.preset} · ` +
       `${replayMeta.world_w}×${replayMeta.world_h} · ` +
       `${replayMeta.n_keyframes} keyframes · v${replayMeta.version}`;
+
+    // Bloc CONFIG SIMULATION
+    $('si-seed').textContent    = replayMeta.seed;
+    $('si-preset').textContent  = replayMeta.preset;
+    $('si-grid').textContent    = `${replayMeta.world_w}×${replayMeta.world_h}`;
+    $('si-maxTicks').textContent = (replayMeta.max_ticks ?? replayMeta.total_ticks).toLocaleString() + ' ticks';
+    $('si-kf').textContent      = replayMeta.n_keyframes;
+    $('si-ver').textContent     = `v${replayMeta.version}`;
 
     const slider = $('tl-slider');
     slider.min   = 0;
@@ -466,10 +485,21 @@ function gotoIdx(idx) {
 }
 
 function updateTickLabel(idx) {
-  const tick = kfTicks[idx] ?? 0;
-  $('tl-label').textContent  =
-    `${tick.toLocaleString()} / ${(replayMeta?.total_ticks ?? 0).toLocaleString()}`;
-  $('hud-tick').textContent  = `tick ${tick.toLocaleString()}`;
+  const tick    = kfTicks[idx] ?? 0;
+  const maxT    = replayMeta?.max_ticks ?? replayMeta?.total_ticks ?? 0;
+  const pct     = maxT > 0 ? Math.min(100, Math.round(tick / maxT * 100)) : 0;
+  const day     = Math.floor(tick / DAY_LENGTH) + 1;
+  const tickRel = tick - (replayMeta?.min_tick ?? 0);   // ticks depuis début sim
+
+  $('tl-label').textContent = `${tick.toLocaleString()} / ${maxT.toLocaleString()}`;
+  $('hud-tick').textContent = `tick ${tick.toLocaleString()}`;
+
+  // Bloc PROGRESSION
+  $('si-frame').textContent  = `${idx + 1} / ${kfTicks.length}`;
+  $('si-tick').textContent   = `${tick.toLocaleString()} / ${maxT.toLocaleString()}`;
+  $('si-day').textContent    = `Jour ${day.toLocaleString()}`;
+  $('si-speed').textContent  = `×${SPEED_LEVELS[speedIdx]}`;
+  $('sim-track-fill').style.width = pct + '%';
 }
 
 /** Rendu principal — pur drawImage, 0 computation JS. */
@@ -593,10 +623,12 @@ function playLoop(now) {
 function speedUp() {
   speedIdx = Math.min(SPEED_LEVELS.length - 1, speedIdx + 1);
   $('spd-label').textContent = `×${SPEED_LEVELS[speedIdx]}`;
+  $('si-speed').textContent  = `×${SPEED_LEVELS[speedIdx]}`;
 }
 function speedDown() {
   speedIdx = Math.max(0, speedIdx - 1);
   $('spd-label').textContent = `×${SPEED_LEVELS[speedIdx]}`;
+  $('si-speed').textContent  = `×${SPEED_LEVELS[speedIdx]}`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

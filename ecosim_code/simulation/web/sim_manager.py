@@ -91,6 +91,7 @@ class SimulationManager:
             recorder = Recorder(out_path, frame_renderer=frame_renderer)
             recorder.write_engine_meta(engine)
             recorder.write_meta("terrain_preset", preset)
+            recorder.write_meta("max_ticks", str(total))
 
             t0         = time.monotonic()
             start_tick = engine.tick_count

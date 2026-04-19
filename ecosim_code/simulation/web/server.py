@@ -158,12 +158,15 @@ def _read_replay_meta(db: str) -> dict:
     reader = ReplayReader(Path(db))
     m      = reader.meta
     ticks  = reader._keyframe_ticks
+    last_kf   = ticks[-1] if ticks else 0
+    max_ticks = int(m.get("max_ticks", last_kf))   # durée configurée par l'utilisateur
     result = {
         "seed":           int(m.get("seed", 42)),
         "preset":         m.get("terrain_preset", "default"),
         "world_w":        int(m.get("world_width",  500)),
         "world_h":        int(m.get("world_height", 500)),
-        "total_ticks":    reader.total_ticks,
+        "total_ticks":    last_kf,       # dernier tick keyframe
+        "max_ticks":      max_ticks,     # durée configurée (dénominateur affiché)
         "min_tick":       reader.min_tick,
         "keyframe_ticks": ticks,
         "n_keyframes":    len(ticks),

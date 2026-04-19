@@ -297,6 +297,36 @@ select option { background: var(--card); }
 .energy-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
 .entity-info { line-height: 1.7; }
 
+/* Bloc progression */
+.sim-progress-block { margin-bottom: 4px; }
+.sim-prog-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 2px 0; border-bottom: 1px solid var(--border);
+}
+.sim-prog-row:last-of-type { border-bottom: none; }
+.sim-prog-lbl { font-size: 10px; color: var(--sub); }
+.sim-prog-val { font-size: 12px; color: var(--text); font-weight: bold; }
+.sim-track-wrap {
+  height: 4px; background: var(--card); border-radius: 2px;
+  margin-top: 6px; overflow: hidden;
+}
+.sim-track-fill {
+  height: 100%; background: var(--accent); border-radius: 2px;
+  width: 0%; transition: width 0.25s ease;
+}
+
+/* Bloc config sim */
+.sim-info-block {
+  background: var(--card); border-radius: 4px; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.sim-info-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.sim-info-lbl { font-size: 10px; color: var(--sub); }
+.sim-info-val { font-size: 11px; color: var(--text); max-width: 160px; text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .kbd-hints {
   margin-top: auto; padding-top: 8px;
   font-size: 10px; color: var(--border); line-height: 1.6;
