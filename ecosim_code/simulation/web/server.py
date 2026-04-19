@@ -261,8 +261,17 @@ async def api_terrain_preview(request):
 
 
 async def api_sim_start(request):
-    config = await request.json()
-    ok     = _mgr.start(config)
+    config  = await request.json()
+    db_path = config.get("out_path", "runs/sim.db")
+    # Invalider le cache mémoire pour ce chemin avant toute nouvelle simulation
+    with _cache_lock:
+        for key in list(_frame_cache.keys()):
+            if key[0] == db_path:
+                del _frame_cache[key]
+        for key in list(_terrain_cache.keys()):
+            if key[0] == db_path:
+                del _terrain_cache[key]
+    ok = _mgr.start(config)
     return web.json_response({"ok": ok, "already_running": not ok})
 
 

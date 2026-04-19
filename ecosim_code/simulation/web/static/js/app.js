@@ -21,6 +21,7 @@ const PREVIEW_SZ = 260;
 const DAY_LENGTH = 1200;   // doit correspondre à engine_const.DAY_LENGTH
 
 const SPEED_LEVELS = [0.25, 0.5, 1, 2, 4, 8, 16, 32];
+let playFps = 1;   // frames/s courant (valeur libre, pas limité aux niveaux)
 const GROUPS = [
   ['PLANTES',    ['herbe', 'fougere', 'champignon', 'baies']],
   ['HERBIVORES', ['lapin', 'campagnol', 'cerf', 'sanglier']],
@@ -54,7 +55,7 @@ let lastJsonSnap   = null;        // dernier JSON snap affiché
 let playing        = false;
 let rafId          = null;
 let nextTarget     = 0;
-let speedIdx       = 2;           // ×1 par défaut
+let speedIdx       = 2;           // index dans SPEED_LEVELS (boutons +/−)
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -269,7 +270,7 @@ function onProgress(msg) {
   if (currentPage !== 'running') return;
   const pct = Math.min(100, Math.round((msg.done / msg.ticks) * 100));
   $('progress-bar').style.width = pct + '%';
-  $('prog-tick').textContent    = msg.tick.toLocaleString();
+  $('prog-tick').textContent    = msg.done.toLocaleString();   // ticks effectués, pas tick absolu
   $('prog-pct').textContent     = pct + '%';
   $('prog-tps').textContent     = msg.tps.toLocaleString() + ' ticks/s';
   $('prog-eta').textContent     = msg.eta_s != null ? 'ETA ' + fmtEta(msg.eta_s) : '—';
@@ -340,6 +341,11 @@ function wireReplay() {
 
   $('spd-up').addEventListener  ('click', speedUp);
   $('spd-down').addEventListener('click', speedDown);
+  $('spd-input').addEventListener('change', () => {
+    const v = parseFloat($('spd-input').value);
+    if (v > 0 && isFinite(v)) { playFps = v; syncSpeedDisplay(); }
+    else $('spd-input').value = playFps;
+  });
 
   $('sim-canvas').addEventListener('click',     onCanvasClick);
   $('sim-canvas').addEventListener('mousemove', onCanvasHover);
@@ -392,7 +398,8 @@ async function openReplay(dbPath) {
   setText('si-frame', '— / —');
   setText('si-tick',  '—');
   setText('si-day',   '—');
-  setText('si-speed', `×${SPEED_LEVELS[speedIdx]}`);
+  playFps = SPEED_LEVELS[speedIdx];
+  syncSpeedDisplay();
   setStyle('sim-track-fill', 'width', '0%');
   ['si-seed','si-preset','si-grid','si-maxTicks','si-kf','si-ver']
     .forEach(id => setText(id, '—'));
@@ -495,19 +502,20 @@ function gotoIdx(idx) {
 
 function updateTickLabel(idx) {
   const tick    = kfTicks[idx] ?? 0;
+  const minT    = replayMeta?.min_tick ?? 0;
   const maxT    = replayMeta?.max_ticks ?? replayMeta?.total_ticks ?? 0;
-  const pct     = maxT > 0 ? Math.min(100, Math.round(tick / maxT * 100)) : 0;
-  const day     = Math.floor(tick / DAY_LENGTH) + 1;
-  const tickRel = tick - (replayMeta?.min_tick ?? 0);   // ticks depuis début sim
+  const tickRel = tick - minT;                                         // ticks depuis début sim
+  const pct     = maxT > 0 ? Math.min(100, Math.round(tickRel / maxT * 100)) : 0;
+  const day     = Math.floor(tickRel / DAY_LENGTH) + 1;
 
-  $('tl-label').textContent = `${tick.toLocaleString()} / ${maxT.toLocaleString()}`;
-  $('hud-tick').textContent = `tick ${tick.toLocaleString()}`;
+  $('tl-label').textContent = `${tickRel.toLocaleString()} / ${maxT.toLocaleString()}`;
+  $('hud-tick').textContent = `tick ${tickRel.toLocaleString()}`;
 
   // Bloc PROGRESSION
   $('si-frame').textContent  = `${idx + 1} / ${kfTicks.length}`;
-  $('si-tick').textContent   = `${tick.toLocaleString()} / ${maxT.toLocaleString()}`;
+  $('si-tick').textContent   = `${tickRel.toLocaleString()} / ${maxT.toLocaleString()}`;
   $('si-day').textContent    = `Jour ${day.toLocaleString()}`;
-  $('si-speed').textContent  = `×${SPEED_LEVELS[speedIdx]}`;
+  $('si-speed').textContent  = `${playFps} fps`;
   $('sim-track-fill').style.width = pct + '%';
 }
 
@@ -622,22 +630,27 @@ function playLoop(now) {
       renderIdx(nextIdx);
       loadJsonLazy(kfTicks[nextIdx]);
     }
-    // Recalcule le prochain instant même si on a sauté
-    nextTarget += 1000 / Math.max(SPEED_LEVELS[speedIdx], 0.1);
+    // Recalcule le prochain instant en fonction du fps courant
+    nextTarget += 1000 / Math.max(playFps, 0.05);
   }
 
   rafId = requestAnimationFrame(playLoop);
 }
 
+function syncSpeedDisplay() {
+  $('spd-input').value       = playFps;
+  $('si-speed').textContent  = `${playFps} fps`;
+}
+
 function speedUp() {
   speedIdx = Math.min(SPEED_LEVELS.length - 1, speedIdx + 1);
-  $('spd-label').textContent = `×${SPEED_LEVELS[speedIdx]}`;
-  $('si-speed').textContent  = `×${SPEED_LEVELS[speedIdx]}`;
+  playFps  = SPEED_LEVELS[speedIdx];
+  syncSpeedDisplay();
 }
 function speedDown() {
   speedIdx = Math.max(0, speedIdx - 1);
-  $('spd-label').textContent = `×${SPEED_LEVELS[speedIdx]}`;
-  $('si-speed').textContent  = `×${SPEED_LEVELS[speedIdx]}`;
+  playFps  = SPEED_LEVELS[speedIdx];
+  syncSpeedDisplay();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

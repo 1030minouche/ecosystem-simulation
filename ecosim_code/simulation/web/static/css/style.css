@@ -263,7 +263,14 @@ select option { background: var(--card); }
 }
 .tl-label { font-size: 11px; color: var(--sub); white-space: nowrap; min-width: 90px; text-align: right; }
 .speed-ctrl { display: flex; align-items: center; gap: 4px; }
-.spd-label  { font-size: 12px; color: var(--text); min-width: 28px; text-align: center; }
+.spd-input  {
+  width: 44px; padding: 2px 4px; font-size: 12px; text-align: center;
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--border); border-radius: 3px;
+  font-family: var(--mono);
+}
+.spd-input:focus { border-color: var(--accent); outline: none; }
+.spd-unit   { font-size: 10px; color: var(--sub); }
 
 /* Replay side */
 .replay-side {

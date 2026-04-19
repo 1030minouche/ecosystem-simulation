@@ -44,6 +44,8 @@ class EngineRunner:
         t_start   = time.monotonic()
         last_prog = 0
         target    = engine.tick_count + max_ticks
+        # ~100 updates par simulation, mini tous les 5 ticks
+        progress_every = max(5, max_ticks // 100)
 
         while engine.tick_count < target:
             if cancel_flag is not None and cancel_flag():
@@ -55,7 +57,7 @@ class EngineRunner:
                 recorder.on_tick_end(engine)
 
             tick = engine.tick_count
-            if on_progress is not None and tick - last_prog >= 500:
+            if on_progress is not None and tick - last_prog >= progress_every:
                 on_progress(tick, dict(engine.species_counts))
                 last_prog = tick
 
