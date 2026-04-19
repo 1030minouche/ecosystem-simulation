@@ -77,6 +77,7 @@ class ReplayFrame(tk.Frame):
         self._world_h = 500
         self._scale_x = CANVAS_W / 500
         self._scale_y = CANVAS_H / 500
+        self._terrain_preset = "default"
 
         # Rendu numpy
         self._terrain_arr: np.ndarray | None = None        # H×W×3 uint8 (fixe)
@@ -346,6 +347,7 @@ class ReplayFrame(tk.Frame):
         self._scale_x = CANVAS_W / self._world_w
         self._scale_y = CANVAS_H / self._world_h
         seed          = int(meta.get("seed", 42))
+        self._terrain_preset = meta.get("terrain_preset", "default")
         max_tick      = self._reader.total_ticks
         min_tick      = self._reader.min_tick
 
@@ -375,7 +377,7 @@ class ReplayFrame(tk.Frame):
         # Terrain en thread de fond
         self._show_loading()
         threading.Thread(
-            target=self._build_terrain_bg, args=(seed,), daemon=True
+            target=self._build_terrain_bg, args=(seed, self._terrain_preset), daemon=True
         ).start()
 
     def on_show(self) -> None:
@@ -391,12 +393,12 @@ class ReplayFrame(tk.Frame):
             font=self._app.font("h2"),
         )
 
-    def _build_terrain_bg(self, seed: int) -> None:
+    def _build_terrain_bg(self, seed: int, preset: str = "default") -> None:
         from world.grid import Grid
         from world.terrain import generate_terrain, BIOME_PALETTE
 
         grid = Grid(width=self._world_w, height=self._world_h)
-        generate_terrain(grid, seed=seed)
+        generate_terrain(grid, seed=seed, preset=preset)
 
         alt = np.array(grid.altitude)
         rgb = np.zeros((self._world_h, self._world_w, 3), dtype=np.uint8)

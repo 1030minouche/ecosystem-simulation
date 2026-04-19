@@ -114,6 +114,7 @@ class EcoSimApp:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             recorder = Recorder(out_path)
             recorder.write_engine_meta(engine)
+            recorder.write_meta("terrain_preset", config.get("preset", "default"))
 
             def on_progress(tick: int, species_counts: dict) -> None:
                 if run_frame.cancelled:
