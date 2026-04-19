@@ -432,7 +432,8 @@ async function openReplay(dbPath) {
     updateTickLabel(0);
 
     // 2. Charge toutes les frames images en parallèle (servies depuis la BD)
-    await loadAllFrameImages(dbPath, kfTicks);
+    // _v = timestamp unique par session → contourne tout cache navigateur résiduel
+    await loadAllFrameImages(dbPath, kfTicks, Date.now());
 
     setCanvasOverlay(null);
     renderIdx(0);
@@ -454,7 +455,7 @@ function setCanvasOverlay(text) {
   }
 }
 
-async function loadAllFrameImages(db, ticks) {
+async function loadAllFrameImages(db, ticks, ver = 0) {
   frameImgs = new Array(ticks.length).fill(null);
   let loaded = 0;
 
@@ -470,7 +471,8 @@ async function loadAllFrameImages(db, ticks) {
       resolve();
     };
     img.onerror = () => { loaded++; resolve(); };
-    img.src = `/api/replay/frame_img?db=${encodeURIComponent(db)}&tick=${tick}&w=${CANVAS_W}&h=${CANVAS_H}`;
+    // _v = timestamp unique → jamais de cache navigateur résiduel
+    img.src = `/api/replay/frame_img?db=${encodeURIComponent(db)}&tick=${tick}&_v=${ver}&w=${CANVAS_W}&h=${CANVAS_H}`;
   });
 
   // 6 requêtes en parallèle, puis batch suivant
