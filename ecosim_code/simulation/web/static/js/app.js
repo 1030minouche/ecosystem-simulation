@@ -1,90 +1,93 @@
 'use strict';
-// EcoSim Web UI — single-file application
+/**
+ * EcoSim Web UI
+ *
+ * Architecture de rendu :
+ *   Le serveur génère les frames en numpy (terrain + entités) et les envoie
+ *   en PNG.  Le client fait uniquement ctx.drawImage() → 60 fps, zéro bug de
+ *   coordonnées, rendu identique au viewer numpy original.
+ *
+ * Cycle de vie du replay :
+ *   1. openReplay(db) → metadata + lance pré-rendu serveur
+ *   2. Charge toutes les frames en parallèle (avec progress)
+ *   3. Play loop synchrone (RAF) : drawImage(frameImgs[kfIdx], 0, 0)
+ *   4. Clic entité → fetch JSON lazy (pas besoin pour le rendu)
+ */
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const CANVAS_W    = 700;
-const CANVAS_H    = 560;
-const PREVIEW_SZ  = 260;
+// ── Constantes ────────────────────────────────────────────────────────────────
+const CANVAS_W   = 720;
+const CANVAS_H   = 576;
+const PREVIEW_SZ = 260;
 
+const SPEED_LEVELS = [0.25, 0.5, 1, 2, 4, 8, 16, 32];
 const GROUPS = [
   ['PLANTES',    ['herbe', 'fougere', 'champignon', 'baies']],
   ['HERBIVORES', ['lapin', 'campagnol', 'cerf', 'sanglier']],
   ['PRÉDATEURS', ['renard', 'loup', 'hibou', 'aigle']],
 ];
 
-// ── Global state ──────────────────────────────────────────────────────────────
-let ws            = null;
-let currentPage   = 'setup';
-let speciesMap    = new Map();    // name → {color, count_default, params, file}
-let runConfig     = null;
+// ── État global ───────────────────────────────────────────────────────────────
+let ws             = null;
+let currentPage    = 'setup';
+let speciesMap     = new Map();
 
-// Replay
-let replayDb      = null;
-let replayMeta    = null;
-let terrainBitmap = null;
-let kfTicks       = [];          // keyframe tick list
-let kfIdx         = 0;           // current keyframe index
-let curTick       = 0;
-let playing       = false;
-let rafId         = null;
-let nextTarget    = 0;           // ms, for play drift compensation
-let speedLevels   = [0.25, 0.5, 1, 2, 4, 8, 16, 32];
-let speedIdx      = 2;           // default ×1
-let frameCache    = new Map();
-let graphHist     = {};
-let popMaxes      = {};
-let selectedId    = null;
-let lastSnap      = null;
+// SETUP
+let previewTimer   = null;
 
-// Setup
-let previewTimer  = null;
-let previewBitmap = null;
+// RUNNING
+let runConfig      = null;
 
-// ── Utility ───────────────────────────────────────────────────────────────────
-const $  = (id) => document.getElementById(id);
-const q  = (sel) => document.querySelector(sel);
-const qa = (sel) => [...document.querySelectorAll(sel)];
+// REPLAY — state machine
+let replayDb       = null;
+let replayMeta     = null;
+let kfTicks        = [];          // liste des ticks keyframe
+let kfIdx          = 0;           // index courant
+let frameImgs      = [];          // HTMLImageElement pré-chargés (index = kfIdx)
+let jsonCache      = new Map();   // tick → données JSON (lazy)
+let popMaxes       = {};
+let graphHist      = {};
+let selectedId     = null;
+let lastJsonSnap   = null;        // dernier JSON snap affiché
 
+// Playback
+let playing        = false;
+let rafId          = null;
+let nextTarget     = 0;
+let speedIdx       = 2;           // ×1 par défaut
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const q = sel => document.querySelector(sel);
+
+// ── Navigation ────────────────────────────────────────────────────────────────
 function showPage(name) {
-  qa('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   $(`page-${name}`).classList.add('active');
   currentPage = name;
 }
 
-function showToast(msg, isErr = false) {
+function toast(msg, isErr = false) {
   const el = $('toast');
   el.textContent = msg;
   el.className = 'toast' + (isErr ? ' error' : '');
   clearTimeout(el._t);
-  el._t = setTimeout(() => el.classList.add('hidden'), 4000);
+  el._t = setTimeout(() => el.classList.add('hidden'), 4500);
 }
-
-function fmtEta(s) {
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  return `${m}m ${(s % 60).toString().padStart(2, '0')}s`;
-}
-
-function cssEscape(name) { return name.replace(/[^a-zA-Z0-9_-]/g, '_'); }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
-let _keepAliveTimer = null;
-
+let _keepAlive = null;
 function connectWS() {
   ws = new WebSocket(`ws://${location.host}/ws`);
-  ws.onopen  = () => {
-    // keep-alive unique — annuler l'ancien avant d'en créer un nouveau
-    if (_keepAliveTimer) clearInterval(_keepAliveTimer);
-    _keepAliveTimer = setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN)
+  ws.onopen = () => {
+    clearInterval(_keepAlive);
+    _keepAlive = setInterval(() => {
+      if (ws?.readyState === WebSocket.OPEN)
         ws.send(JSON.stringify({ type: 'ping' }));
     }, 20000);
   };
-  ws.onclose = () => setTimeout(connectWS, 2000);
-  ws.onerror = () => {};
-  ws.onmessage = e => {
-    try { dispatch(JSON.parse(e.data)); } catch (_) {}
-  };
+  ws.onclose   = () => setTimeout(connectWS, 2000);
+  ws.onerror   = () => {};
+  ws.onmessage = e => { try { dispatch(JSON.parse(e.data)); } catch (_) {} };
 }
 
 function dispatch(msg) {
@@ -104,10 +107,13 @@ async function init() {
   wireSetup();
   wireRunning();
   wireReplay();
-  schedulePreview(50);
+  schedulePreview(80);
 }
 
-// ── SETUP page ────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// SETUP
+// ══════════════════════════════════════════════════════════════════════════════
+
 async function loadSpecies() {
   const items = await fetch('/api/species').then(r => r.json()).catch(() => []);
   speciesMap.clear();
@@ -116,7 +122,7 @@ async function loadSpecies() {
 }
 
 function renderSpeciesList(items) {
-  const cont = $('species-list');
+  const cont   = $('species-list');
   cont.innerHTML = '';
   const byFile = Object.fromEntries(items.map(s => [s.file, s]));
 
@@ -135,7 +141,7 @@ function renderSpeciesList(items) {
         <input type="checkbox" class="sp-check" data-name="${sp.name}" checked>
         <span class="sp-dot" style="background:${sp.color}"></span>
         <span class="sp-name">${sp.name}</span>
-        <span style="font-size:10px;color:var(--sub)">init:</span>
+        <span class="form-hint">init:</span>
         <input type="number" class="sp-count" data-name="${sp.name}"
                value="${sp.count_default}" min="0" max="500">
       `;
@@ -149,7 +155,7 @@ async function loadRuns() {
   const list = $('runs-list');
   list.innerHTML = '';
   if (!runs.length) {
-    list.innerHTML = '<p style="font-size:11px;color:var(--border);padding:4px 0">Aucun enregistrement</p>';
+    list.innerHTML = '<p class="no-runs">Aucun enregistrement</p>';
     return;
   }
   runs.slice(0, 8).forEach(run => {
@@ -166,45 +172,45 @@ async function loadRuns() {
 }
 
 function wireSetup() {
-  $('seed-input').addEventListener('input',  () => schedulePreview());
+  $('seed-input').addEventListener('input',    () => schedulePreview());
   $('preset-select').addEventListener('change', () => schedulePreview(0));
-  qa('input[name="gs"]').forEach(r => r.addEventListener('change', () => {}));
-  $('regen-btn').addEventListener('click', () => schedulePreview(0));
+  document.querySelectorAll('input[name="gs"]')
+    .forEach(r => r.addEventListener('change', () => schedulePreview(0)));
+  $('regen-btn').addEventListener('click',  () => schedulePreview(0));
   $('launch-btn').addEventListener('click', onLaunch);
 }
 
-function schedulePreview(delay = 400) {
+function currentGridSize() {
+  return parseInt(q('input[name="gs"]:checked')?.value || '500');
+}
+
+function schedulePreview(delay = 380) {
   clearTimeout(previewTimer);
   previewTimer = setTimeout(generatePreview, delay);
 }
 
 async function generatePreview() {
-  const seed   = parseInt($('seed-input').value)   || 42;
-  const preset = $('preset-select').value;
+  const seed      = parseInt($('seed-input').value) || 42;
+  const preset    = $('preset-select').value;
+  const gridSize  = currentGridSize();
 
   $('terrain-spinner').classList.remove('hidden');
   try {
-    const resp   = await fetch('/api/terrain/preview', {
+    const resp = await fetch('/api/terrain/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ seed, preset, size: PREVIEW_SZ }),
+      body: JSON.stringify({ seed, preset, size: PREVIEW_SZ, grid_size: gridSize }),
     });
-    const blob   = await resp.blob();
-    previewBitmap = await createImageBitmap(blob);
-    drawPreview();
-    $('terrain-info').textContent = `seed ${seed}  ·  preset: ${preset}`;
-  } catch (e) {
+    const bmp = await createImageBitmap(await resp.blob());
+    const cv  = $('terrain-preview');
+    const ctx = cv.getContext('2d');
+    ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+    $('terrain-info').textContent = `seed ${seed}  ·  preset: ${preset}  ·  ${gridSize}×${gridSize}`;
+  } catch {
     $('terrain-info').textContent = 'Erreur preview';
   } finally {
     $('terrain-spinner').classList.add('hidden');
   }
-}
-
-function drawPreview() {
-  const cv  = $('terrain-preview');
-  const ctx = cv.getContext('2d');
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  if (previewBitmap) ctx.drawImage(previewBitmap, 0, 0, cv.width, cv.height);
 }
 
 function onLaunch() {
@@ -212,10 +218,10 @@ function onLaunch() {
   const ticks    = parseInt($('ticks-input').value) || 10000;
   const outPath  = $('out-input').value.trim()      || 'runs/sim.db';
   const preset   = $('preset-select').value;
-  const gridSize = parseInt(q('input[name="gs"]:checked').value);
+  const gridSize = currentGridSize();
 
-  const species = [];
-  qa('.sp-row').forEach(row => {
+  const species  = [];
+  document.querySelectorAll('.sp-row').forEach(row => {
     const cb  = row.querySelector('.sp-check');
     const cnt = row.querySelector('.sp-count');
     if (!cb) return;
@@ -226,33 +232,36 @@ function onLaunch() {
 
   runConfig = { seed, ticks, grid_size: gridSize, preset, out_path: outPath, species };
 
-  // Prepare RUNNING page
   $('run-config-lbl').textContent =
     `${gridSize}×${gridSize}  ·  seed=${seed}  ·  ${ticks.toLocaleString()} ticks  ·  ${outPath}`;
   $('prog-total').textContent = ticks.toLocaleString();
   resetProgressUI();
-
   showPage('running');
+
   fetch('/api/sim/start', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(runConfig),
   });
 }
 
 function resetProgressUI() {
-  $('progress-bar').style.width  = '0%';
-  $('prog-tick').textContent     = '0';
-  $('prog-pct').textContent      = '0%';
-  $('prog-tps').textContent      = '— ticks/s';
-  $('prog-eta').textContent      = '—';
-  $('running-grid').innerHTML    = '';
+  $('progress-bar').style.width = '0%';
+  $('prog-tick').textContent    = '0';
+  $('prog-pct').textContent     = '0%';
+  $('prog-tps').textContent     = '— ticks/s';
+  $('prog-eta').textContent     = '—';
+  $('running-grid').innerHTML   = '';
 }
 
-// ── RUNNING page ──────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// RUNNING
+// ══════════════════════════════════════════════════════════════════════════════
+
 function wireRunning() {
-  $('cancel-btn').addEventListener('click', () => {
-    fetch('/api/sim/cancel', { method: 'POST' });
-  });
+  $('cancel-btn').addEventListener('click', () =>
+    fetch('/api/sim/cancel', { method: 'POST' })
+  );
 }
 
 function onProgress(msg) {
@@ -262,14 +271,19 @@ function onProgress(msg) {
   $('prog-tick').textContent    = msg.tick.toLocaleString();
   $('prog-pct').textContent     = pct + '%';
   $('prog-tps').textContent     = msg.tps.toLocaleString() + ' ticks/s';
-  $('prog-eta').textContent     = msg.eta_s !== null ? 'ETA ' + fmtEta(msg.eta_s) : '—';
+  $('prog-eta').textContent     = msg.eta_s != null ? 'ETA ' + fmtEta(msg.eta_s) : '—';
   updateRunGrid(msg.counts);
+}
+
+function fmtEta(s) {
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${(s % 60).toString().padStart(2, '0')}s`;
 }
 
 function updateRunGrid(counts) {
   const grid = $('running-grid');
   Object.entries(counts).forEach(([name, n]) => {
-    const id  = 'rsg-' + cssEscape(name);
+    const id  = 'rsg-' + CSS.escape(name);
     const sp  = speciesMap.get(name);
     const col = sp ? sp.color : '#888';
     let card  = document.getElementById(id);
@@ -286,7 +300,7 @@ function updateRunGrid(counts) {
       grid.appendChild(card);
     }
     card.querySelector('.run-sp-count').textContent = n.toLocaleString();
-    card.style.opacity = n > 0 ? '1' : '0.35';
+    card.style.opacity = n > 0 ? '1' : '0.3';
   });
 }
 
@@ -297,76 +311,79 @@ function onSimDone(msg) {
 }
 
 function onSimError(msg) {
-  showToast('Erreur simulation : ' + msg.message, true);
+  toast('Erreur simulation : ' + msg.message, true);
   showPage('setup');
 }
 
-// ── REPLAY page ───────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// REPLAY — openReplay + pré-chargement
+// ══════════════════════════════════════════════════════════════════════════════
+
 function wireReplay() {
   $('back-btn').addEventListener('click', () => {
     stopPlay();
     showPage('setup');
     loadRuns();
   });
-
   $('open-btn').addEventListener('click', () => {
     const db = prompt('Chemin du fichier .db :', 'runs/sim.db');
     if (db) openReplay(db.trim());
   });
 
-  // Timeline controls
   $('tl-play').addEventListener ('click', togglePlay);
   $('tl-first').addEventListener('click', () => gotoIdx(0));
   $('tl-last').addEventListener ('click', () => gotoIdx(kfTicks.length - 1));
   $('tl-prev').addEventListener ('click', () => gotoIdx(kfIdx - 1));
   $('tl-next').addEventListener ('click', () => gotoIdx(kfIdx + 1));
-  $('tl-slider').addEventListener('input', e => {
-    const i = parseInt(e.target.value);
-    if (i !== kfIdx) gotoIdx(i);
-  });
+  $('tl-slider').addEventListener('input', e => gotoIdx(parseInt(e.target.value)));
+
   $('spd-up').addEventListener  ('click', speedUp);
   $('spd-down').addEventListener('click', speedDown);
 
-  // Canvas interaction
   $('sim-canvas').addEventListener('click',     onCanvasClick);
   $('sim-canvas').addEventListener('mousemove', onCanvasHover);
 
-  // Keyboard shortcuts
   document.addEventListener('keydown', e => {
     if (currentPage !== 'replay') return;
     if (e.target.tagName === 'INPUT') return;
-    if (e.key === ' ')           { e.preventDefault(); togglePlay(); return; }
-    if (e.key === 'ArrowLeft')   { e.preventDefault();
-      e.ctrlKey ? gotoIdx(0) : e.shiftKey ? gotoIdx(kfIdx-10) : gotoIdx(kfIdx-1); return; }
-    if (e.key === 'ArrowRight')  { e.preventDefault();
-      e.ctrlKey ? gotoIdx(kfTicks.length-1) : e.shiftKey ? gotoIdx(kfIdx+10) : gotoIdx(kfIdx+1); return; }
-    if (e.key === '+' || e.key === '=') speedUp();
-    if (e.key === '-') speedDown();
+    if (e.key === ' ')          { e.preventDefault(); togglePlay(); }
+    else if (e.key === 'ArrowLeft')  { e.preventDefault();
+      e.ctrlKey ? gotoIdx(0) : e.shiftKey ? gotoIdx(kfIdx-10) : gotoIdx(kfIdx-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault();
+      e.ctrlKey ? gotoIdx(kfTicks.length-1) : e.shiftKey ? gotoIdx(kfIdx+10) : gotoIdx(kfIdx+1); }
+    else if (e.key === '+' || e.key === '=') speedUp();
+    else if (e.key === '-') speedDown();
   });
 }
 
 async function openReplay(dbPath) {
-  // Reset state
   stopPlay();
-  replayDb  = dbPath;
-  replayMeta = null;
-  terrainBitmap = null;
-  kfTicks = []; kfIdx = 0; curTick = 0;
-  frameCache.clear();
-  graphHist = {}; popMaxes = {};
-  selectedId = null; lastSnap = null;
+  replayDb    = dbPath;
+  replayMeta  = null;
+  kfTicks     = [];
+  kfIdx       = 0;
+  frameImgs   = [];
+  jsonCache.clear();
+  popMaxes    = {};
+  graphHist   = {};
+  selectedId  = null;
+  lastJsonSnap = null;
 
-  $('replay-title').textContent = 'EcoSim — ' + dbPath.split('/').pop().split('\\').pop();
-  $('pop-panel').innerHTML = '';
-  $('entity-card').innerHTML = '<p class="entity-placeholder">— cliquez une entité</p>';
-  clearGraph();
+  const shortName = dbPath.split('/').pop().split('\\').pop();
+  $('replay-title').textContent = 'EcoSim — ' + shortName;
+  $('replay-meta').textContent  = '—';
+  $('pop-panel').innerHTML      = '';
+  $('entity-card').innerHTML    = '<p class="entity-placeholder">— cliquez une entité</p>';
+  clearGraphCanvas();
 
   showPage('replay');
-  showCanvasOverlay(true);
+  setCanvasOverlay('Chargement des métadonnées…');
 
   try {
-    replayMeta = await fetch(`/api/replay/meta?db=${encodeURIComponent(dbPath)}`).then(r => r.json());
-    kfTicks    = replayMeta.keyframe_ticks;
+    // 1. Métadonnées
+    replayMeta = await fetch(`/api/replay/meta?db=${encodeURIComponent(dbPath)}`)
+      .then(r => { if (!r.ok) throw new Error('meta 404'); return r.json(); });
+    kfTicks = replayMeta.keyframe_ticks;
 
     $('replay-meta').textContent =
       `seed=${replayMeta.seed} · ${replayMeta.preset} · ` +
@@ -374,117 +391,234 @@ async function openReplay(dbPath) {
       `${replayMeta.n_keyframes} keyframes · v${replayMeta.version}`;
 
     const slider = $('tl-slider');
-    slider.min = 0;
-    slider.max = Math.max(0, kfTicks.length - 1);
+    slider.min   = 0;
+    slider.max   = Math.max(0, kfTicks.length - 1);
     slider.value = 0;
-    $('tl-label').textContent = `0 / ${replayMeta.total_ticks.toLocaleString()}`;
+    updateTickLabel(0);
 
-    // Load terrain
-    const resp = await fetch(
-      `/api/replay/terrain?db=${encodeURIComponent(dbPath)}&w=${CANVAS_W}&h=${CANVAS_H}`
-    );
-    terrainBitmap = await createImageBitmap(await resp.blob());
+    // 2. Déclenche le pré-rendu serveur (background)
+    fetch('/api/replay/prerender', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ db: dbPath, w: CANVAS_W, h: CANVAS_H }),
+    }).catch(() => {});
 
-    showCanvasOverlay(false);
-    await gotoIdx(0);
+    // 3. Charge toutes les frames images en parallèle
+    await loadAllFrameImages(dbPath, kfTicks);
+
+    setCanvasOverlay(null);
+    renderIdx(0);
 
   } catch (err) {
-    showCanvasOverlay(false);
-    showToast('Erreur replay : ' + err, true);
+    setCanvasOverlay(null);
+    toast('Erreur replay : ' + err, true);
+    console.error(err);
   }
 }
 
-function showCanvasOverlay(on) {
-  $('canvas-loading').classList.toggle('hidden', !on);
+function setCanvasOverlay(text) {
+  const el = $('canvas-loading');
+  if (text) {
+    el.querySelector('span:last-child').textContent = text;
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
 }
 
-// ── Frame navigation ──────────────────────────────────────────────────────────
-async function gotoIdx(idx) {
-  if (!replayDb || kfTicks.length === 0) return;
-  idx    = Math.max(0, Math.min(kfTicks.length - 1, idx));
-  kfIdx  = idx;
-  curTick = kfTicks[idx];
+async function loadAllFrameImages(db, ticks) {
+  frameImgs = new Array(ticks.length).fill(null);
+  let loaded = 0;
 
-  $('tl-slider').value  = idx;
-  $('tl-label').textContent =
-    `${curTick.toLocaleString()} / ${replayMeta.total_ticks.toLocaleString()}`;
-  $('hud-tick').textContent = `tick ${curTick.toLocaleString()}`;
+  setCanvasOverlay(`Rendu des frames — 0 / ${ticks.length}`);
 
-  const snap = await fetchFrame(curTick);
-  if (!snap) return;
-  lastSnap = snap;
-
-  renderFrame(snap);
-  updatePopPanel(snap.counts);
-  updateGraph(snap.counts);
-  if (selectedId !== null) updateEntityCard(snap);
-
-  // background pre-fetch
-  [idx+1, idx+2, idx-1].forEach(i => {
-    if (i >= 0 && i < kfTicks.length) fetchFrame(kfTicks[i]);
+  const loadOne = (tick, i) => new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      frameImgs[i] = img;
+      loaded++;
+      if (loaded % 3 === 0 || loaded === ticks.length)
+        setCanvasOverlay(`Rendu des frames — ${loaded} / ${ticks.length}`);
+      resolve();
+    };
+    img.onerror = () => { loaded++; resolve(); };
+    img.src = `/api/replay/frame_img?db=${encodeURIComponent(db)}&tick=${tick}&w=${CANVAS_W}&h=${CANVAS_H}`;
   });
-}
 
-async function fetchFrame(tick) {
-  if (frameCache.has(tick)) return frameCache.get(tick);
-  const data = await fetch(
-    `/api/replay/frame?db=${encodeURIComponent(replayDb)}&tick=${tick}`
-  ).then(r => r.json()).catch(() => null);
-  if (data) {
-    frameCache.set(tick, data);
-    if (frameCache.size > 60) frameCache.delete(frameCache.keys().next().value);
+  // 6 requêtes en parallèle, puis batch suivant
+  const BATCH = 6;
+  for (let i = 0; i < ticks.length; i += BATCH) {
+    await Promise.all(
+      ticks.slice(i, i + BATCH).map((tick, j) => loadOne(tick, i + j))
+    );
   }
-  return data;
 }
 
-// ── Canvas render ─────────────────────────────────────────────────────────────
-function renderFrame(snap) {
+// ══════════════════════════════════════════════════════════════════════════════
+// REPLAY — navigation (synchrone, aucun await ici)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function gotoIdx(idx) {
+  if (!replayDb || kfTicks.length === 0) return;
+  idx   = Math.max(0, Math.min(kfTicks.length - 1, idx));
+  kfIdx = idx;
+
+  $('tl-slider').value = idx;
+  updateTickLabel(idx);
+
+  renderIdx(idx);
+
+  // Charge JSON lazy pour panel populations + entité
+  loadJsonLazy(kfTicks[idx]);
+}
+
+function updateTickLabel(idx) {
+  const tick = kfTicks[idx] ?? 0;
+  $('tl-label').textContent  =
+    `${tick.toLocaleString()} / ${(replayMeta?.total_ticks ?? 0).toLocaleString()}`;
+  $('hud-tick').textContent  = `tick ${tick.toLocaleString()}`;
+}
+
+/** Rendu principal — pur drawImage, 0 computation JS. */
+function renderIdx(idx) {
   const cv  = $('sim-canvas');
   const ctx = cv.getContext('2d');
-  const cw = cv.width, ch = cv.height;
-  const ww = replayMeta.world_w, wh = replayMeta.world_h;
-  const sx = cw / ww, sy = ch / wh;
+  const img = frameImgs[idx];
 
-  // terrain
-  if (terrainBitmap) ctx.drawImage(terrainBitmap, 0, 0, cw, ch);
-  else { ctx.fillStyle = '#050d18'; ctx.fillRect(0, 0, cw, ch); }
+  if (img?.complete && img.naturalWidth > 0) {
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+  } else {
+    // Frame pas encore chargée : fond sombre
+    ctx.fillStyle = '#050d18';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+  }
 
-  // plants — 1×1 px
-  snap.plants.forEach(p => {
-    const sp = speciesMap.get(p.sp);
-    ctx.fillStyle = sp ? sp.color : '#44aa44';
-    ctx.fillRect(Math.round(p.x * sx), Math.round(p.y * sy), 1, 1);
-  });
-
-  // animals — 5×5 px
-  snap.individuals.forEach(ind => {
-    const sp  = speciesMap.get(ind.sp);
-    const col = sp ? sp.color : '#ff8800';
-    const px  = Math.round(ind.x * sx);
-    const py  = Math.round(ind.y * sy);
-
-    if (ind.id === selectedId) {
-      ctx.strokeStyle = 'rgba(255,255,200,0.9)';
-      ctx.lineWidth   = 1.5;
-      ctx.beginPath();
-      ctx.arc(px, py, 7, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.fillStyle = col;
-    ctx.fillRect(px - 2, py - 2, 5, 5);
-  });
+  // Overlay sélection (ring autour de l'entité choisie)
+  if (selectedId !== null && lastJsonSnap) {
+    drawSelectionRing(ctx, lastJsonSnap, cv.width, cv.height);
+  }
 }
 
-// ── Population panel ──────────────────────────────────────────────────────────
+function drawSelectionRing(ctx, snap, cw, ch) {
+  if (!replayMeta) return;
+  const entity = [...snap.plants, ...snap.individuals].find(e => e.id === selectedId);
+  if (!entity) return;
+  const sx = cw / replayMeta.world_w;
+  const sy = ch / replayMeta.world_h;
+  const px = entity.x * sx;
+  const py = entity.y * sy;
+  const sp = speciesMap.get(entity.sp);
+  ctx.strokeStyle = 'rgba(255,255,200,0.95)';
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.arc(px, py, 8, 0, Math.PI * 2);
+  ctx.stroke();
+  if (sp) {
+    ctx.strokeStyle = sp.color;
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.arc(px, py, 11, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// REPLAY — JSON lazy (populations + entity panel)
+// ══════════════════════════════════════════════════════════════════════════════
+
+function loadJsonLazy(tick) {
+  if (jsonCache.has(tick)) {
+    const snap = jsonCache.get(tick);
+    lastJsonSnap = snap;
+    updatePopPanel(snap.counts);
+    updateGraph(snap.counts);
+    if (selectedId !== null) updateEntityCard(snap);
+    return;
+  }
+
+  fetch(`/api/replay/frame_json?db=${encodeURIComponent(replayDb)}&tick=${tick}`)
+    .then(r => r.json())
+    .then(snap => {
+      jsonCache.set(tick, snap);
+      if (tick === kfTicks[kfIdx]) {   // toujours sur ce tick ?
+        lastJsonSnap = snap;
+        updatePopPanel(snap.counts);
+        updateGraph(snap.counts);
+        if (selectedId !== null) updateEntityCard(snap);
+      }
+    })
+    .catch(() => {});
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// REPLAY — Playback
+// ══════════════════════════════════════════════════════════════════════════════
+
+function togglePlay() { playing ? stopPlay() : startPlay(); }
+
+function startPlay() {
+  if (!replayDb || kfTicks.length === 0) return;
+  playing    = true;
+  nextTarget = performance.now();
+  $('tl-play').classList.add('playing');
+  $('tl-play').textContent = '⏸';
+  rafId = requestAnimationFrame(playLoop);
+}
+
+function stopPlay() {
+  playing = false;
+  if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+  if ($('tl-play')) {
+    $('tl-play').classList.remove('playing');
+    $('tl-play').textContent = '▶';
+  }
+}
+
+function playLoop(now) {
+  if (!playing) return;
+
+  if (now >= nextTarget) {
+    const nextIdx = kfIdx + 1;
+    if (nextIdx >= kfTicks.length) { stopPlay(); return; }
+
+    // Avance seulement si la frame est déjà chargée
+    const img = frameImgs[nextIdx];
+    if (img?.complete && img.naturalWidth > 0) {
+      kfIdx = nextIdx;
+      $('tl-slider').value = nextIdx;
+      updateTickLabel(nextIdx);
+      renderIdx(nextIdx);
+      loadJsonLazy(kfTicks[nextIdx]);
+    }
+    // Recalcule le prochain instant même si on a sauté
+    nextTarget += 1000 / Math.max(SPEED_LEVELS[speedIdx], 0.1);
+  }
+
+  rafId = requestAnimationFrame(playLoop);
+}
+
+function speedUp() {
+  speedIdx = Math.min(SPEED_LEVELS.length - 1, speedIdx + 1);
+  $('spd-label').textContent = `×${SPEED_LEVELS[speedIdx]}`;
+}
+function speedDown() {
+  speedIdx = Math.max(0, speedIdx - 1);
+  $('spd-label').textContent = `×${SPEED_LEVELS[speedIdx]}`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// REPLAY — Panel populations
+// ══════════════════════════════════════════════════════════════════════════════
+
 function updatePopPanel(counts) {
-  const panel = $('pop-panel');
-  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const panel   = $('pop-panel');
+  const sorted  = Object.entries(counts).sort((a, b) => b[1] - a[1]);
 
   sorted.forEach(([name, n]) => {
     popMaxes[name] = Math.max(popMaxes[name] || 1, n, 1);
     const sp    = speciesMap.get(name);
     const color = sp ? sp.color : '#888';
-    const id    = 'pp-' + cssEscape(name);
+    const id    = 'pp-' + CSS.escape(name);
 
     let row = document.getElementById(id);
     if (!row) {
@@ -501,26 +635,29 @@ function updatePopPanel(counts) {
       `;
       panel.appendChild(row);
     }
-    const pct = Math.round(n / popMaxes[name] * 100);
+    const pct    = Math.round(n / popMaxes[name] * 100);
     row.querySelector('.pop-bar-fill').style.width = pct + '%';
-    const countEl = row.querySelector('.pop-count');
-    countEl.textContent  = n.toLocaleString();
-    countEl.style.color  = n > 0 ? 'var(--success)' : 'var(--danger)';
+    const cnt    = row.querySelector('.pop-count');
+    cnt.textContent = n.toLocaleString();
+    cnt.style.color = n > 0 ? 'var(--success)' : 'var(--danger)';
   });
 }
 
-// ── Graph ─────────────────────────────────────────────────────────────────────
-function clearGraph() {
-  const gc  = $('graph-canvas');
-  const ctx = gc.getContext('2d');
-  ctx.clearRect(0, 0, gc.width, gc.height);
+// ══════════════════════════════════════════════════════════════════════════════
+// REPLAY — Graphe
+// ══════════════════════════════════════════════════════════════════════════════
+
+function clearGraphCanvas() {
+  const gc = $('graph-canvas');
+  if (!gc) return;
+  gc.getContext('2d').clearRect(0, 0, gc.width, gc.height);
 }
 
 function updateGraph(counts) {
   Object.entries(counts).forEach(([name, n]) => {
     if (!graphHist[name]) graphHist[name] = [];
     graphHist[name].push(n);
-    if (graphHist[name].length > 350) graphHist[name].splice(0, 100);
+    if (graphHist[name].length > 400) graphHist[name].splice(0, 100);
   });
   drawGraph();
 }
@@ -537,12 +674,12 @@ function drawGraph() {
   const nPts   = Math.max(...Object.values(graphHist).map(h => h.length));
   if (nPts < 2) return;
 
+  ctx.globalAlpha = 0.85;
   Object.entries(graphHist).forEach(([name, hist]) => {
     if (hist.length < 2) return;
-    const sp  = speciesMap.get(name);
+    const sp = speciesMap.get(name);
     ctx.strokeStyle = sp ? sp.color : '#888';
-    ctx.lineWidth   = 1;
-    ctx.globalAlpha = 0.85;
+    ctx.lineWidth   = 1.2;
     ctx.beginPath();
     hist.forEach((v, i) => {
       const x = 2 + (i / (nPts - 1)) * (gw - 4);
@@ -554,40 +691,45 @@ function drawGraph() {
   ctx.globalAlpha = 1;
 }
 
-// ── Entity card ───────────────────────────────────────────────────────────────
-function onCanvasClick(ev) {
-  if (!lastSnap || !replayMeta) return;
-  const cv   = $('sim-canvas');
-  const rect = cv.getBoundingClientRect();
-  const cx   = ev.clientX - rect.left;
-  const cy   = ev.clientY - rect.top;
-  const ww   = replayMeta.world_w, wh = replayMeta.world_h;
-  const wx   = (cx / cv.width)  * ww;
-  const wy   = (cy / cv.height) * wh;
+// ══════════════════════════════════════════════════════════════════════════════
+// REPLAY — Sélection entité
+// ══════════════════════════════════════════════════════════════════════════════
 
-  let bestId = null, bestD = 12;
-  [...lastSnap.plants, ...lastSnap.individuals].forEach(e => {
+function onCanvasClick(ev) {
+  if (!lastJsonSnap || !replayMeta) return;
+  const cv     = $('sim-canvas');
+  const rect   = cv.getBoundingClientRect();
+  const scaleX = cv.width  / rect.width;
+  const scaleY = cv.height / rect.height;
+  const cx     = (ev.clientX - rect.left) * scaleX;
+  const cy     = (ev.clientY - rect.top)  * scaleY;
+  const wx     = cx / cv.width  * replayMeta.world_w;
+  const wy     = cy / cv.height * replayMeta.world_h;
+
+  let bestId = null, bestD = 14;
+  [...lastJsonSnap.plants, ...lastJsonSnap.individuals].forEach(e => {
     const d = Math.hypot(e.x - wx, e.y - wy);
     if (d < bestD) { bestD = d; bestId = e.id; }
   });
 
   selectedId = bestId;
-  renderFrame(lastSnap);
-  updateEntityCard(lastSnap);
+  renderIdx(kfIdx);
+  if (lastJsonSnap) updateEntityCard(lastJsonSnap);
 }
 
 function onCanvasHover(ev) {
-  if (!lastSnap || !replayMeta) return;
+  if (!lastJsonSnap || !replayMeta) return;
   const cv   = $('sim-canvas');
   const rect = cv.getBoundingClientRect();
-  const cx   = ev.clientX - rect.left;
-  const cy   = ev.clientY - rect.top;
-  const ww   = replayMeta.world_w, wh = replayMeta.world_h;
-  const wx   = (cx / cv.width)  * ww;
-  const wy   = (cy / cv.height) * wh;
+  const scaleX = cv.width  / rect.width;
+  const scaleY = cv.height / rect.height;
+  const cx   = (ev.clientX - rect.left) * scaleX;
+  const cy   = (ev.clientY - rect.top)  * scaleY;
+  const wx   = cx / cv.width  * replayMeta.world_w;
+  const wy   = cy / cv.height * replayMeta.world_h;
 
-  let bestName = '', bestD = 8;
-  [...lastSnap.plants, ...lastSnap.individuals].forEach(e => {
+  let bestName = '', bestD = 10;
+  [...lastJsonSnap.plants, ...lastJsonSnap.individuals].forEach(e => {
     const d = Math.hypot(e.x - wx, e.y - wy);
     if (d < bestD) { bestD = d; bestName = e.sp; }
   });
@@ -609,14 +751,14 @@ function updateEntityCard(snap) {
   const color = sp ? sp.color : '#888';
   const maxE  = 200;
   const ratio = Math.max(0, Math.min(1, entity.energy / maxE));
-  const barCol = ratio > 0.5 ? 'var(--success)' : ratio > 0.2 ? 'var(--warn)' : 'var(--danger)';
+  const barC  = ratio > 0.5 ? 'var(--success)' : ratio > 0.2 ? 'var(--warn)' : 'var(--danger)';
 
   card.innerHTML = `
     <div class="entity-name" style="color:${color}">
       <span class="sp-dot" style="background:${color};display:inline-block;margin-right:6px;vertical-align:middle"></span>${entity.sp}
     </div>
     <div class="energy-bar-wrap">
-      <div class="energy-bar-fill" style="width:${Math.round(ratio*100)}%;background:${barCol}"></div>
+      <div class="energy-bar-fill" style="width:${Math.round(ratio*100)}%;background:${barC}"></div>
     </div>
     <div class="entity-info">
       x: ${entity.x?.toFixed(1)}&nbsp;&nbsp;y: ${entity.y?.toFixed(1)}<br>
@@ -625,52 +767,6 @@ function updateEntityCard(snap) {
       état: ${entity.state || '—'}
     </div>
   `;
-}
-
-// ── Playback ──────────────────────────────────────────────────────────────────
-function togglePlay() {
-  playing ? stopPlay() : startPlay();
-}
-
-function startPlay() {
-  if (!replayDb || kfTicks.length === 0) return;
-  playing     = true;
-  nextTarget  = performance.now();
-  $('tl-play').classList.add('playing');
-  $('tl-play').textContent = '⏸';
-  rafId = requestAnimationFrame(playLoop);
-}
-
-function stopPlay() {
-  playing = false;
-  if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-  $('tl-play').classList.remove('playing');
-  $('tl-play').textContent = '▶';
-}
-
-function playLoop(now) {
-  if (!playing) return;
-  if (now >= nextTarget) {
-    const nextIdx = kfIdx + 1;
-    if (nextIdx >= kfTicks.length) { stopPlay(); return; }
-    gotoIdx(nextIdx);
-    const speed = speedLevels[speedIdx];
-    nextTarget += 1000 / Math.max(speed, 0.1);
-  }
-  rafId = requestAnimationFrame(playLoop);
-}
-
-function speedUp() {
-  speedIdx = Math.min(speedLevels.length - 1, speedIdx + 1);
-  updateSpeedLabel();
-}
-function speedDown() {
-  speedIdx = Math.max(0, speedIdx - 1);
-  updateSpeedLabel();
-}
-function updateSpeedLabel() {
-  const s = speedLevels[speedIdx];
-  $('spd-label').textContent = s >= 1 ? `×${s}` : `×${s}`;
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
