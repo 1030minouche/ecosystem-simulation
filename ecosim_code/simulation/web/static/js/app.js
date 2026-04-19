@@ -357,8 +357,18 @@ function wireReplay() {
   });
 }
 
+// Helper null-safe pour les éléments optionnels
+function setText(id, val) { const el = $(id); if (el) el.textContent = val; }
+function setStyle(id, prop, val) { const el = $(id); if (el) el.style[prop] = val; }
+
 async function openReplay(dbPath) {
   stopPlay();
+
+  // Afficher la page replay EN PREMIER — avant tout accès DOM risqué
+  showPage('replay');
+  setCanvasOverlay('Chargement…');
+
+  // Réinitialisation de l'état
   replayDb    = dbPath;
   replayMeta  = null;
   kfTicks     = [];
@@ -371,23 +381,22 @@ async function openReplay(dbPath) {
   lastJsonSnap = null;
 
   const shortName = dbPath.split('/').pop().split('\\').pop();
-  $('replay-title').textContent = 'EcoSim — ' + shortName;
-  $('replay-meta').textContent  = '—';
-  $('pop-panel').innerHTML      = '';
-  $('entity-card').innerHTML    = '<p class="entity-placeholder">— cliquez une entité</p>';
+  setText('replay-title', 'EcoSim — ' + shortName);
+  setText('replay-meta',  '—');
+  const popEl = $('pop-panel'); if (popEl) popEl.innerHTML = '';
+  const entEl = $('entity-card');
+  if (entEl) entEl.innerHTML = '<p class="entity-placeholder">— cliquez une entité</p>';
   clearGraphCanvas();
 
-  // Réinitialiser le bloc progression
-  $('si-frame').textContent = '— / —';
-  $('si-tick').textContent  = '—';
-  $('si-day').textContent   = '—';
-  $('si-speed').textContent = `×${SPEED_LEVELS[speedIdx]}`;
-  $('sim-track-fill').style.width = '0%';
-  // Réinitialiser le bloc config
+  // Réinitialiser le bloc progression (null-safe)
+  setText('si-frame', '— / —');
+  setText('si-tick',  '—');
+  setText('si-day',   '—');
+  setText('si-speed', `×${SPEED_LEVELS[speedIdx]}`);
+  setStyle('sim-track-fill', 'width', '0%');
   ['si-seed','si-preset','si-grid','si-maxTicks','si-kf','si-ver']
-    .forEach(id => $(id).textContent = '—');
+    .forEach(id => setText(id, '—'));
 
-  showPage('replay');
   setCanvasOverlay('Chargement des métadonnées…');
 
   try {
