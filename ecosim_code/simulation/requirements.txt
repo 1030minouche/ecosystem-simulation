@@ -3,3 +3,4 @@ scipy
 noise
 matplotlib
 Pillow
+aiohttp>=3.8

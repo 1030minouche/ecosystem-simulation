@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EcoSim</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── SETUP ─────────────────────────────────────────────────────────── -->
+    <section id="page-setup" class="page active">
+      <header class="app-header">
+        <div class="header-left">
+          <span class="logo">◆ EcoSim</span>
+          <span class="subtitle">Simulateur d'écosystème biologique</span>
+        </div>
+        <span class="version" id="ver-lbl">v0.3.0</span>
+      </header>
+
+      <div class="setup-body">
+        <!-- Terrain -->
+        <div class="panel terrain-panel">
+          <div class="panel-title">TERRAIN</div>
+          <div class="preview-wrap">
+            <canvas id="terrain-preview" width="260" height="260"></canvas>
+            <div id="terrain-spinner" class="preview-spinner hidden">
+              <span class="spinner"></span>
+            </div>
+          </div>
+          <p class="terrain-info" id="terrain-info">—</p>
+
+          <div class="form-row">
+            <label>Seed</label>
+            <input id="seed-input" type="number" value="42" min="0" max="9999999">
+          </div>
+          <div class="form-row">
+            <label>Preset</label>
+            <select id="preset-select">
+              <option value="default">Défaut</option>
+              <option value="ile">Île</option>
+              <option value="archipel">Archipel</option>
+              <option value="montagne">Montagne</option>
+              <option value="continent">Continent</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Grille</label>
+            <div class="radio-group" id="grid-size-group">
+              <label class="radio-lbl"><input type="radio" name="gs" value="200"> 200</label>
+              <label class="radio-lbl"><input type="radio" name="gs" value="300"> 300</label>
+              <label class="radio-lbl"><input type="radio" name="gs" value="500" checked> 500</label>
+            </div>
+          </div>
+          <button id="regen-btn" class="btn btn-ghost btn-sm">↺ Régénérer</button>
+        </div>
+
+        <!-- Right col -->
+        <div class="right-col">
+          <!-- Species -->
+          <div class="panel species-panel">
+            <div class="panel-title">ESPÈCES</div>
+            <div id="species-list" class="species-list"></div>
+          </div>
+
+          <!-- Sim config -->
+          <div class="panel sim-config-panel">
+            <div class="panel-title">SIMULATION</div>
+            <div class="form-row">
+              <label>Durée (ticks)</label>
+              <input id="ticks-input" type="number" value="10000" min="100" max="1000000">
+              <span class="form-hint">≈ 1 keyframe / 500 ticks</span>
+            </div>
+            <div class="form-row">
+              <label>Fichier sortie</label>
+              <input id="out-input" type="text" value="runs/sim.db" class="input-wide">
+            </div>
+          </div>
+
+          <button id="launch-btn" class="btn btn-primary btn-large">
+            ▶&nbsp;&nbsp;LANCER LA SIMULATION
+          </button>
+
+          <!-- Recent runs -->
+          <div class="panel runs-panel">
+            <div class="panel-title">ENREGISTREMENTS RÉCENTS</div>
+            <div id="runs-list" class="runs-list"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── RUNNING ────────────────────────────────────────────────────────── -->
+    <section id="page-running" class="page">
+      <header class="app-header">
+        <div class="header-left">
+          <span class="logo">◆ EcoSim</span>
+          <span class="subtitle" id="run-subtitle">Simulation en cours…</span>
+        </div>
+      </header>
+
+      <div class="running-body">
+        <div class="run-card">
+          <div class="run-title" id="run-config-lbl">—</div>
+
+          <div class="progress-section">
+            <div class="progress-track">
+              <div id="progress-bar" class="progress-fill"></div>
+            </div>
+            <div class="progress-stats">
+              <span id="prog-tick" class="stat-num">0</span>
+              <span class="stat-sep">/</span>
+              <span id="prog-total" class="stat-num">—</span>
+              <span class="badge" id="prog-pct">0%</span>
+              <span class="stat-sep">·</span>
+              <span id="prog-tps">— ticks/s</span>
+              <span class="stat-sep">·</span>
+              <span id="prog-eta">—</span>
+            </div>
+          </div>
+
+          <div class="running-grid" id="running-grid"></div>
+          <button id="cancel-btn" class="btn btn-danger">✕&nbsp; Annuler</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── REPLAY ─────────────────────────────────────────────────────────── -->
+    <section id="page-replay" class="page">
+      <header class="app-header replay-header">
+        <button id="back-btn" class="btn btn-ghost back-btn">← Retour</button>
+        <div class="header-left">
+          <span class="logo" id="replay-title">EcoSim — Replay</span>
+          <span class="subtitle" id="replay-meta">—</span>
+        </div>
+        <button id="open-btn" class="btn btn-secondary">📂&nbsp;Ouvrir…</button>
+        <input id="open-file-hidden" type="text" style="display:none">
+      </header>
+
+      <div class="replay-body">
+        <!-- Canvas -->
+        <div class="canvas-col">
+          <div class="canvas-wrap">
+            <canvas id="sim-canvas" width="720" height="576"></canvas>
+            <div id="canvas-hud" class="canvas-hud">
+              <span id="hud-tick" class="hud-tick"></span>
+              <span id="hud-hover" class="hud-hover"></span>
+            </div>
+            <div id="canvas-loading" class="canvas-loading hidden">
+              <span class="spinner"></span>
+              <span>Génération du terrain…</span>
+            </div>
+          </div>
+          <!-- Timeline -->
+          <div class="timeline">
+            <button id="tl-first" class="tl-btn" title="Premier (Ctrl+←)">⏮</button>
+            <button id="tl-prev"  class="tl-btn" title="−1 (←)">◀</button>
+            <button id="tl-play"  class="tl-btn tl-play" title="Play/Pause (Espace)">▶</button>
+            <button id="tl-next"  class="tl-btn" title="+1 (→)">▶</button>
+            <button id="tl-last"  class="tl-btn" title="Dernier (Ctrl+→)">⏭</button>
+            <input  id="tl-slider" type="range" min="0" max="1" value="0" step="1" class="tl-slider">
+            <span id="tl-label" class="tl-label">0 / 0</span>
+            <div class="speed-ctrl">
+              <button id="spd-down" class="tl-btn">−</button>
+              <span id="spd-label" class="spd-label">×1</span>
+              <button id="spd-up"   class="tl-btn">+</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Side panel -->
+        <div class="replay-side">
+          <div class="panel-title">POPULATIONS</div>
+          <div id="pop-panel" class="pop-panel"></div>
+
+          <div class="panel-title" style="margin-top:10px">GRAPHE</div>
+          <canvas id="graph-canvas" width="290" height="115" class="graph-canvas"></canvas>
+
+          <div class="panel-title" style="margin-top:10px">ENTITÉ SÉLECTIONNÉE</div>
+          <div id="entity-card" class="entity-card">
+            <p class="entity-placeholder">— cliquez une entité</p>
+          </div>
+
+          <p class="kbd-hints">
+            Espace · ← → · Shift+← → · Ctrl+← → · + −
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- #app -->
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
