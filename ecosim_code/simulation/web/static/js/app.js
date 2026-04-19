@@ -216,7 +216,7 @@ async function generatePreview() {
 
 function onLaunch() {
   const seed     = parseInt($('seed-input').value)  || 42;
-  const ticks    = parseInt($('ticks-input').value) || 10000;
+  const ticks    = Math.max(100, parseInt($('ticks-input').value) || 1000);
   const outPath  = $('out-input').value.trim()      || 'runs/sim.db';
   const preset   = $('preset-select').value;
   const gridSize = currentGridSize();
