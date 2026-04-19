@@ -5,7 +5,7 @@ tod (time_of_day) ∈ [0, 1)
   0.00 = minuit  |  0.25 = aube  |  0.50 = midi  |  0.75 = crépuscule
 """
 
-TICKS_PER_SECOND = 50   # cadence cible pour le calcul de déplacement
+TICKS_PER_SECOND = 10   # cadence cible pour le calcul de déplacement
 
 _PRE_REST_BUFFER = 0.06   # fenêtre de "recherche d'abri" avant le repos
 

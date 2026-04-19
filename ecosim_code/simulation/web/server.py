@@ -328,7 +328,7 @@ async def api_frame_img(request):
     loop = asyncio.get_event_loop()
     png  = await loop.run_in_executor(None, _get_frame_png, db, tick, w, h)
     return web.Response(body=png, content_type="image/png",
-                        headers={"Cache-Control": "max-age=3600"})
+                        headers={"Cache-Control": "no-store"})
 
 
 async def api_frame_json(request):
