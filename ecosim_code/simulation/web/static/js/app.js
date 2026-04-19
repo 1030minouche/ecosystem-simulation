@@ -3,15 +3,15 @@
  * EcoSim Web UI
  *
  * Architecture de rendu :
- *   Le serveur génère les frames en numpy (terrain + entités) et les envoie
- *   en PNG.  Le client fait uniquement ctx.drawImage() → 60 fps, zéro bug de
- *   coordonnées, rendu identique au viewer numpy original.
+ *   Les frames PNG sont pré-rendues pendant la simulation et stockées dans le
+ *   .db (table renders).  Au replay, le serveur les sert directement.
+ *   Le client fait uniquement ctx.drawImage() → 60 fps, zéro re-calcul.
  *
  * Cycle de vie du replay :
- *   1. openReplay(db) → metadata + lance pré-rendu serveur
+ *   1. openReplay(db) → metadata
  *   2. Charge toutes les frames en parallèle (avec progress)
  *   3. Play loop synchrone (RAF) : drawImage(frameImgs[kfIdx], 0, 0)
- *   4. Clic entité → fetch JSON lazy (pas besoin pour le rendu)
+ *   4. Clic entité → fetch JSON lazy (positions + énergie)
  */
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -396,14 +396,7 @@ async function openReplay(dbPath) {
     slider.value = 0;
     updateTickLabel(0);
 
-    // 2. Déclenche le pré-rendu serveur (background)
-    fetch('/api/replay/prerender', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ db: dbPath, w: CANVAS_W, h: CANVAS_H }),
-    }).catch(() => {});
-
-    // 3. Charge toutes les frames images en parallèle
+    // 2. Charge toutes les frames images en parallèle (servies depuis la BD)
     await loadAllFrameImages(dbPath, kfTicks);
 
     setCanvasOverlay(null);

@@ -27,9 +27,15 @@ if TYPE_CHECKING:
 
 
 class Recorder:
-    def __init__(self, path: Path, keyframe_every: int = 500) -> None:
+    def __init__(self, path: Path, keyframe_every: int = 500,
+                 frame_renderer=None) -> None:
+        """
+        frame_renderer : callable(engine, tick) -> bytes | None
+            Si fourni, appelé après chaque keyframe pour stocker un PNG pré-rendu.
+        """
         self.path            = path
         self.keyframe_every  = keyframe_every
+        self._frame_renderer = frame_renderer
         self._last_keyframe  = -1
         self._conn           = sqlite3.connect(str(path))
         self._init_db()
@@ -57,6 +63,11 @@ class Recorder:
                 payload   TEXT
             )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_events_tick ON events(tick)")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS renders (
+                tick INTEGER PRIMARY KEY,
+                png  BLOB
+            )""")
         c.commit()
 
     def write_engine_meta(self, engine: "SimulationEngine") -> None:
@@ -122,4 +133,17 @@ class Recorder:
             "INSERT OR REPLACE INTO keyframes(tick, data_blob) VALUES (?, ?)",
             (tick, snap.to_blob()),
         )
+
+        # PNG pré-rendu (si renderer fourni)
+        if self._frame_renderer is not None:
+            try:
+                png = self._frame_renderer(engine, tick)
+                if png:
+                    self._conn.execute(
+                        "INSERT OR REPLACE INTO renders(tick, png) VALUES (?, ?)",
+                        (tick, png),
+                    )
+            except Exception:
+                pass  # ne jamais bloquer la simulation
+
         self._conn.commit()

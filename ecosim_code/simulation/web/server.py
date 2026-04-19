@@ -3,9 +3,10 @@ EcoSim Web Server — aiohttp
 Lance un serveur HTTP+WebSocket sur localhost:8765.
 
 Rendu :
-  Les frames replay sont rendues côté serveur en numpy (terrain + entités)
-  et envoyées au client sous forme de PNG. Le client fait uniquement
-  ctx.drawImage() → 60 fps garanti, aucun bug de coordonnées.
+  Les frames sont pré-rendues pendant la simulation et stockées dans le .db
+  (table renders).  Au replay, le serveur lit simplement les PNG bytes depuis
+  la BD et les sert.  Si la table renders est absente (ancien .db), fallback
+  vers le re-rendu depuis WorldSnapshot.
 """
 from __future__ import annotations
 
@@ -97,16 +98,24 @@ def _get_terrain_arr(db: str, out_w: int, out_h: int) -> np.ndarray:
     return arr
 
 
-def _render_frame_png(db: str, tick: int, out_w: int, out_h: int) -> bytes:
-    """Rend terrain + entités pour un tick → PNG bytes (numpy vectorisé)."""
+def _get_stored_frame_png(db: str, tick: int) -> bytes | None:
+    """Lit un PNG pré-rendu depuis la table renders du .db.  Retourne None si absent."""
+    import sqlite3
+    try:
+        conn = sqlite3.connect(db, check_same_thread=False)
+        row  = conn.execute("SELECT png FROM renders WHERE tick=?", (tick,)).fetchone()
+        conn.close()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def _render_frame_png_fallback(db: str, tick: int, out_w: int, out_h: int) -> bytes:
+    """Fallback : re-rend depuis WorldSnapshot (anciens .db sans table renders)."""
     from simulation.recording.replay import ReplayReader
-    from PIL import Image
+    from web.renderer import render_snapshot_frame
 
-    # Terrain (depuis cache)
     terrain  = _get_terrain_arr(db, out_w, out_h)
-    arr      = terrain.copy()          # buffer de travail mutable
-
-    # Données du monde
     reader   = ReplayReader(Path(db))
     m        = reader.meta
     world_w  = int(m.get("world_width",  500))
@@ -115,52 +124,30 @@ def _render_frame_png(db: str, tick: int, out_w: int, out_h: int) -> bytes:
     reader.close()
 
     if snap is None:
+        import io
+        from PIL import Image
         buf = io.BytesIO()
-        Image.fromarray(arr, "RGB").save(buf, format="PNG")
+        Image.fromarray(terrain, "RGB").save(buf, format="PNG")
         return buf.getvalue()
 
     colors = _load_species_colors()
-    sx, sy = out_w / world_w, out_h / world_h
-
-    # ── Plantes (1×1 px, vectorisé par espèce) ────────────────────────────────
-    plant_by_sp: dict[str, list] = {}
-    for p in snap.plants:
-        if p.alive:
-            plant_by_sp.setdefault(p.species, []).append(p)
-
-    for sp_name, plants in plant_by_sp.items():
-        col = colors.get(sp_name, (100, 200, 100))
-        xs  = np.clip(
-            np.round(np.array([p.x for p in plants], dtype=np.float32) * sx).astype(int),
-            0, out_w - 1,
-        )
-        ys  = np.clip(
-            np.round(np.array([p.y for p in plants], dtype=np.float32) * sy).astype(int),
-            0, out_h - 1,
-        )
-        arr[ys, xs] = col
-
-    # ── Animaux (5×5 px) ──────────────────────────────────────────────────────
-    for ind in snap.individuals:
-        if not ind.alive:
-            continue
-        col = colors.get(ind.species, (255, 165, 0))
-        cx  = int(np.clip(round(ind.x * sx), 2, out_w - 3))
-        cy  = int(np.clip(round(ind.y * sy), 2, out_h - 3))
-        arr[cy - 2:cy + 3, cx - 2:cx + 3] = col
-
-    buf = io.BytesIO()
-    Image.fromarray(arr, "RGB").save(buf, format="PNG", optimize=False)
-    return buf.getvalue()
+    return render_snapshot_frame(snap, terrain, colors, world_w, world_h, out_w, out_h)
 
 
 def _get_frame_png(db: str, tick: int, out_w: int, out_h: int) -> bytes:
-    """Frame PNG avec cache.  Thread-safe."""
+    """Sert un PNG de frame. Priorité : table renders > cache mémoire > re-rendu."""
     key = (db, tick, out_w, out_h)
     with _cache_lock:
         if key in _frame_cache:
             return _frame_cache[key]
-    png = _render_frame_png(db, tick, out_w, out_h)
+
+    # Essaie d'abord la table renders (pré-rendu pendant la simulation)
+    png = _get_stored_frame_png(db, tick)
+
+    if png is None:
+        # Fallback : re-rendu depuis WorldSnapshot (anciens .db)
+        png = _render_frame_png_fallback(db, tick, out_w, out_h)
+
     with _cache_lock:
         _frame_cache[key] = png
     return png
@@ -356,15 +343,15 @@ async def api_prerender(request):
 
 
 async def _prerender_all(db: str, w: int, h: int) -> None:
-    """Tâche asyncio : pré-rend toutes les frames du .db dans le pool threads."""
+    """Tâche asyncio : warm le cache mémoire pour les frames pas encore en cache."""
     from simulation.recording.replay import ReplayReader
     reader = ReplayReader(Path(db))
     ticks  = list(reader._keyframe_ticks)
     reader.close()
     loop = asyncio.get_event_loop()
-    # Pré-render terrain d'abord (warm le cache)
+    # Warm terrain cache (utile pour le fallback re-rendu des anciens .db)
     await loop.run_in_executor(None, _get_terrain_arr, db, w, h)
-    # Puis toutes les frames
+    # Warm frame cache (lit depuis la table renders si disponible, sinon re-rend)
     for tick in ticks:
         await loop.run_in_executor(None, _get_frame_png, db, tick, w, h)
 
