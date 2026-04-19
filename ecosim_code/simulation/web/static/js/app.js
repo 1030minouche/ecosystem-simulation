@@ -68,18 +68,23 @@ function fmtEta(s) {
 function cssEscape(name) { return name.replace(/[^a-zA-Z0-9_-]/g, '_'); }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
+let _keepAliveTimer = null;
+
 function connectWS() {
   ws = new WebSocket(`ws://${location.host}/ws`);
-  ws.onopen    = () => {};
-  ws.onclose   = () => setTimeout(connectWS, 2000);
-  ws.onerror   = () => {};
+  ws.onopen  = () => {
+    // keep-alive unique — annuler l'ancien avant d'en créer un nouveau
+    if (_keepAliveTimer) clearInterval(_keepAliveTimer);
+    _keepAliveTimer = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ type: 'ping' }));
+    }, 20000);
+  };
+  ws.onclose = () => setTimeout(connectWS, 2000);
+  ws.onerror = () => {};
   ws.onmessage = e => {
     try { dispatch(JSON.parse(e.data)); } catch (_) {}
   };
-  // keep-alive
-  setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
-  }, 20000);
 }
 
 function dispatch(msg) {

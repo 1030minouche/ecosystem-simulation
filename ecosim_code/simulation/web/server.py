@@ -242,12 +242,8 @@ def _read_frame(db: str, tick: int) -> dict:
 
 # ── App factory ───────────────────────────────────────────────────────────────
 
-def create_app() -> web.Application:
-    global _mgr
-    from web.sim_manager import SimulationManager
-    loop = asyncio.get_event_loop()
-    _mgr = SimulationManager(loop)
-
+def _build_app() -> web.Application:
+    """Construit l'application aiohttp (sans créer le SimulationManager)."""
     app = web.Application()
     app.router.add_get("/",                       handle_index)
     app.router.add_get("/static/{path:.*}",       handle_static)
@@ -267,15 +263,22 @@ def run(host: str = "127.0.0.1", port: int = 8765) -> None:
     import webbrowser
     import threading
 
-    app = create_app()
-
     async def _start():
+        global _mgr
+        from web.sim_manager import SimulationManager
+        # IMPORTANT: créer le SimulationManager ICI, après asyncio.run() — le
+        # running loop est le bon. Si on l'appelle avant asyncio.run(), on capture
+        # un loop différent et run_coroutine_threadsafe ne livre jamais les messages.
+        loop = asyncio.get_running_loop()
+        _mgr = SimulationManager(loop)
+
+        app     = _build_app()
         runner  = web.AppRunner(app)
         await runner.setup()
         site    = web.TCPSite(runner, host, port)
         await site.start()
         print(f"[EcoSim] Interface web → http://{host}:{port}", flush=True)
         threading.Timer(0.8, lambda: webbrowser.open(f"http://{host}:{port}")).start()
-        await asyncio.Event().wait()   # run forever
+        await asyncio.Event().wait()
 
     asyncio.run(_start())
