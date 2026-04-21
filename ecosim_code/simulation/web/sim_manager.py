@@ -91,8 +91,8 @@ class SimulationManager:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             if out_path.exists():
                 out_path.unlink()   # repart toujours d'un .db vierge
-            # ~200 keyframes quelle que soit la durée, mini 5 ticks entre deux
-            kf_every = max(5, total // 200)
+            # ~400 keyframes quelle que soit la durée, mini 3 ticks entre deux
+            kf_every = max(3, total // 400)
             recorder = Recorder(out_path, keyframe_every=kf_every, frame_renderer=frame_renderer)
             recorder.write_engine_meta(engine)
             recorder.write_meta("terrain_preset", preset)
