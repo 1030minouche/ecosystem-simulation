@@ -206,11 +206,9 @@ class SimulationEngine:
         }
 
         # ── Animaux ──────────────────────────────────────────────────────────
-        # Rayons :
-        #   r_perc  = perception_radius → prédateurs, nourriture
-        #   r_repro = 3 × perception_radius → partenaire (reproduction._try_reproduce)
         time_of_day     = (self.tick_count % DAY_LENGTH) / DAY_LENGTH
         new_individuals = []
+        self._last_newborns: list = []
         for ind in self.individuals:
             r_perc  = ind.species.perception_radius
             r_repro = r_perc * 3.0
@@ -247,6 +245,7 @@ class SimulationEngine:
 
         for baby in new_individuals:
             reg._species_counts[baby.species.name] = reg._species_counts.get(baby.species.name, 0) + 1
+        self._last_newborns = new_individuals
         self.individuals.extend(new_individuals)
 
         reg.detect_extinctions(self.tick_count)

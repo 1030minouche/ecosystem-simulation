@@ -44,6 +44,9 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
     home_x: float = -1.0
     home_y: float = -1.0
 
+    # Généalogie : ID Python de la mère (-1 = fondateur, spawn initial)
+    parent_id: int = -1
+
     # ── Boucle de vie ─────────────────────────────────────────────────────────
 
     def tick(self, grid, all_plants, all_individuals, time_of_day: float = 0.5,

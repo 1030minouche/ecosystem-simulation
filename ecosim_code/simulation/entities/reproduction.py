@@ -32,6 +32,7 @@ def _spawn_offspring(parent, grid, species, energy_factor: float = 0.5,
         sex=random.choice(["male", "female"]),
         wander_angle=random.uniform(0, 2 * math.pi),
         home_x=bx, home_y=by,
+        parent_id=id(parent),
     )
 
 

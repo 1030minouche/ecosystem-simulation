@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -68,6 +69,14 @@ class Recorder:
                 tick INTEGER PRIMARY KEY,
                 png  BLOB
             )""")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS counts (
+                tick INTEGER PRIMARY KEY,
+                data TEXT
+            )""")
+        if not c.execute("SELECT 1 FROM meta WHERE key='run_id'").fetchone():
+            c.execute("INSERT INTO meta(key, value) VALUES ('run_id', ?)",
+                      (uuid.uuid4().hex[:8],))
         c.commit()
 
     def write_engine_meta(self, engine: "SimulationEngine") -> None:
@@ -88,6 +97,17 @@ class Recorder:
 
     def on_tick_end(self, engine: "SimulationEngine") -> None:
         tick = engine.tick_count
+        # Enregistre les naissances (généalogie)
+        for baby in getattr(engine, '_last_newborns', []):
+            self._conn.execute(
+                "INSERT INTO events(tick, kind, entity_id, payload) VALUES (?,?,?,?)",
+                (tick, 'birth', id(baby), json.dumps({
+                    'parent_id': getattr(baby, 'parent_id', -1),
+                    'species':   baby.species.name,
+                    'x':         round(baby.x, 2),
+                    'y':         round(baby.y, 2),
+                }, separators=(',', ':')))
+            )
         if tick - self._last_keyframe >= self.keyframe_every:
             self._write_keyframe(engine, tick)
             self._last_keyframe = tick
@@ -132,6 +152,10 @@ class Recorder:
         self._conn.execute(
             "INSERT OR REPLACE INTO keyframes(tick, data_blob) VALUES (?, ?)",
             (tick, snap.to_blob()),
+        )
+        self._conn.execute(
+            "INSERT OR REPLACE INTO counts(tick, data) VALUES (?,?)",
+            (tick, json.dumps(snap.species_counts, separators=(',', ':'))),
         )
 
         # PNG pré-rendu (si renderer fourni)
