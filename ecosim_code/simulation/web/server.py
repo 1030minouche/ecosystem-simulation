@@ -187,11 +187,7 @@ def _read_frame_json(db: str, tick: int) -> dict:
         return {"tick": tick, "plants": [], "individuals": [], "counts": {}}
     return {
         "tick": snap.tick,
-        "plants": [
-            {"id": e.id, "x": round(e.x, 1), "y": round(e.y, 1),
-             "sp": e.species, "energy": round(e.energy, 1), "age": e.age}
-            for e in snap.plants if e.alive
-        ],
+        "plants": [],
         "individuals": [
             {"id": e.id, "sp": e.species,
              "x": round(e.x, 1), "y": round(e.y, 1),
@@ -590,7 +586,7 @@ def _build_app() -> web.Application:
     return app
 
 
-def run(host: str = "127.0.0.1", port: int = 8765) -> None:
+def run(host: str = "0.0.0.0", port: int = 9000) -> None:
     import webbrowser, threading
 
     async def _start():
@@ -604,8 +600,8 @@ def run(host: str = "127.0.0.1", port: int = 8765) -> None:
         await runner.setup()
         site   = web.TCPSite(runner, host, port)
         await site.start()
-        print(f"[EcoSim] Interface web → http://{host}:{port}", flush=True)
-        threading.Timer(0.8, lambda: webbrowser.open(f"http://{host}:{port}")).start()
+        print(f"[EcoSim] Interface web → http://localhost:{port}", flush=True)
+        threading.Timer(0.8, lambda: webbrowser.open(f"http://localhost:{port}")).start()
         await asyncio.Event().wait()
 
     asyncio.run(_start())

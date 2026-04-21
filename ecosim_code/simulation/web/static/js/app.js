@@ -413,10 +413,10 @@ async function openAnalyse(dbPath) {
     updateTickLabel(0);
 
     const ver = Date.now();
-    await loadAllFrameImages(dbPath, kfTicks, ver);
-
+    await loadFirstFrame(dbPath, kfTicks, ver);
     setCanvasOverlay(null);
     renderIdx(0);
+    loadRemainingFrames(dbPath, kfTicks, ver);
 
     // Pré-charge timeseries en arrière-plan
     loadTimeseries().then(() => {
@@ -471,19 +471,35 @@ function setCanvasOverlay(text) {
   }
 }
 
-async function loadAllFrameImages(db, ticks, ver = 0) {
-  frameImgs = new Array(ticks.length).fill(null);
-  let loaded = 0;
-  setCanvasOverlay(`Frames — 0 / ${ticks.length}`);
-  const loadOne = (tick, i) => new Promise(resolve => {
+function _makeFrameLoader(db, tick, i, ver) {
+  return new Promise(resolve => {
     const img = new Image();
-    img.onload  = () => { frameImgs[i] = img; loaded++; if (loaded % 5 === 0 || loaded === ticks.length) setCanvasOverlay(`Frames — ${loaded} / ${ticks.length}`); resolve(); };
-    img.onerror = () => { loaded++; resolve(); };
+    img.onload  = () => { frameImgs[i] = img; resolve(); };
+    img.onerror = () => resolve();
     img.src = `/api/replay/frame_img?db=${encodeURIComponent(db)}&tick=${tick}&_v=${ver}&w=${CANVAS_W}&h=${CANVAS_H}`;
   });
+}
+
+async function loadFirstFrame(db, ticks, ver) {
+  frameImgs = new Array(ticks.length).fill(null);
+  setCanvasOverlay(`Chargement…`);
+  if (ticks.length > 0) await _makeFrameLoader(db, ticks[0], 0, ver);
+}
+
+async function loadRemainingFrames(db, ticks, ver) {
+  let loaded = 1;
   const BATCH = 8;
-  for (let i = 0; i < ticks.length; i += BATCH) {
-    await Promise.all(ticks.slice(i, i + BATCH).map((tick, j) => loadOne(tick, i + j)));
+  for (let i = 1; i < ticks.length; i += BATCH) {
+    await Promise.all(ticks.slice(i, i + BATCH).map((tick, j) => {
+      const idx = i + j;
+      return _makeFrameLoader(db, tick, idx, ver).then(() => {
+        loaded++;
+        if (loaded % 10 === 0 || loaded === ticks.length) {
+          const bar = $('sim-track-fill');
+          if (bar) bar.style.opacity = loaded < ticks.length ? '0.6' : '1';
+        }
+      });
+    }));
   }
 }
 
@@ -528,7 +544,7 @@ function renderIdx(idx) {
 
 function drawSelectionRing(ctx, snap, cw, ch) {
   if (!analyseMeta) return;
-  const entity = [...snap.plants, ...snap.individuals].find(e => e.id === selectedId);
+  const entity = snap.individuals.find(e => e.id === selectedId);
   if (!entity) return;
   const px = entity.x / analyseMeta.world_w * cw;
   const py = entity.y / analyseMeta.world_h * ch;
@@ -554,6 +570,7 @@ function loadJsonLazy(tick) {
     .then(r => r.json())
     .then(snap => {
       jsonCache.set(tick, snap);
+      if (jsonCache.size > 60) jsonCache.delete(jsonCache.keys().next().value);
       if (tick === kfTicks[kfIdx]) {
         lastJsonSnap = snap;
         updatePopPanel(snap.counts);
@@ -714,7 +731,7 @@ function onCanvasClick(ev) {
   const cx  = (ev.clientX - rect.left) * scX, cy = (ev.clientY - rect.top) * scY;
   const wx  = cx / cv.width * analyseMeta.world_w, wy = cy / cv.height * analyseMeta.world_h;
   let bestId = null, bestD = 14;
-  [...lastJsonSnap.plants, ...lastJsonSnap.individuals].forEach(e => {
+  lastJsonSnap.individuals.forEach(e => {
     const d = Math.hypot(e.x - wx, e.y - wy);
     if (d < bestD) { bestD = d; bestId = e.id; }
   });
@@ -723,24 +740,29 @@ function onCanvasClick(ev) {
   if (lastJsonSnap) updateEntityCard(lastJsonSnap);
 }
 
+let _hoverRafPending = false;
 function onCanvasHover(ev) {
-  if (!lastJsonSnap || !analyseMeta) return;
+  if (!lastJsonSnap || !analyseMeta || _hoverRafPending) return;
+  _hoverRafPending = true;
   const cv = $('sim-canvas'); const rect = cv.getBoundingClientRect();
   const scX = cv.width / rect.width, scY = cv.height / rect.height;
   const cx  = (ev.clientX - rect.left) * scX, cy = (ev.clientY - rect.top) * scY;
   const wx  = cx / cv.width * analyseMeta.world_w, wy = cy / cv.height * analyseMeta.world_h;
-  let best = '', bestD = 10;
-  [...lastJsonSnap.plants, ...lastJsonSnap.individuals].forEach(e => {
-    const d = Math.hypot(e.x - wx, e.y - wy);
-    if (d < bestD) { bestD = d; best = e.sp; }
+  requestAnimationFrame(() => {
+    _hoverRafPending = false;
+    let best = '', bestD = 10;
+    lastJsonSnap.individuals.forEach(e => {
+      const d = Math.hypot(e.x - wx, e.y - wy);
+      if (d < bestD) { bestD = d; best = e.sp; }
+    });
+    $('hud-hover').textContent = best;
   });
-  $('hud-hover').textContent = best;
 }
 
 function updateEntityCard(snap) {
   const card = $('entity-card');
   if (selectedId === null) { card.innerHTML = '<p class="entity-ph">— cliquez une entité</p>'; return; }
-  const entity = [...snap.plants, ...snap.individuals].find(e => e.id === selectedId);
+  const entity = snap.individuals.find(e => e.id === selectedId);
   if (!entity) { card.innerHTML = '<p class="entity-ph" style="color:var(--err)">✝ disparu</p>'; return; }
   const sp    = speciesMap.get(entity.sp);
   const color = sp ? sp.color : '#888';
