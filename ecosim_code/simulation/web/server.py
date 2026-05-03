@@ -3,9 +3,10 @@ EcoSim Web Server — aiohttp
 Lance un serveur HTTP+WebSocket sur localhost:8765.
 
 Rendu :
-  Les frames replay sont rendues côté serveur en numpy (terrain + entités)
-  et envoyées au client sous forme de PNG. Le client fait uniquement
-  ctx.drawImage() → 60 fps garanti, aucun bug de coordonnées.
+  Les frames sont pré-rendues pendant la simulation et stockées dans le .db
+  (table renders).  Au replay, le serveur lit simplement les PNG bytes depuis
+  la BD et les sert.  Si la table renders est absente (ancien .db), fallback
+  vers le re-rendu depuis WorldSnapshot.
 """
 from __future__ import annotations
 
@@ -97,16 +98,24 @@ def _get_terrain_arr(db: str, out_w: int, out_h: int) -> np.ndarray:
     return arr
 
 
-def _render_frame_png(db: str, tick: int, out_w: int, out_h: int) -> bytes:
-    """Rend terrain + entités pour un tick → PNG bytes (numpy vectorisé)."""
+def _get_stored_frame_png(db: str, tick: int) -> bytes | None:
+    """Lit un PNG pré-rendu depuis la table renders du .db.  Retourne None si absent."""
+    import sqlite3
+    try:
+        conn = sqlite3.connect(db, check_same_thread=False)
+        row  = conn.execute("SELECT png FROM renders WHERE tick=?", (tick,)).fetchone()
+        conn.close()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def _render_frame_png_fallback(db: str, tick: int, out_w: int, out_h: int) -> bytes:
+    """Fallback : re-rend depuis WorldSnapshot (anciens .db sans table renders)."""
     from simulation.recording.replay import ReplayReader
-    from PIL import Image
+    from web.renderer import render_snapshot_frame
 
-    # Terrain (depuis cache)
     terrain  = _get_terrain_arr(db, out_w, out_h)
-    arr      = terrain.copy()          # buffer de travail mutable
-
-    # Données du monde
     reader   = ReplayReader(Path(db))
     m        = reader.meta
     world_w  = int(m.get("world_width",  500))
@@ -115,52 +124,30 @@ def _render_frame_png(db: str, tick: int, out_w: int, out_h: int) -> bytes:
     reader.close()
 
     if snap is None:
+        import io
+        from PIL import Image
         buf = io.BytesIO()
-        Image.fromarray(arr, "RGB").save(buf, format="PNG")
+        Image.fromarray(terrain, "RGB").save(buf, format="PNG")
         return buf.getvalue()
 
     colors = _load_species_colors()
-    sx, sy = out_w / world_w, out_h / world_h
-
-    # ── Plantes (1×1 px, vectorisé par espèce) ────────────────────────────────
-    plant_by_sp: dict[str, list] = {}
-    for p in snap.plants:
-        if p.alive:
-            plant_by_sp.setdefault(p.species, []).append(p)
-
-    for sp_name, plants in plant_by_sp.items():
-        col = colors.get(sp_name, (100, 200, 100))
-        xs  = np.clip(
-            np.round(np.array([p.x for p in plants], dtype=np.float32) * sx).astype(int),
-            0, out_w - 1,
-        )
-        ys  = np.clip(
-            np.round(np.array([p.y for p in plants], dtype=np.float32) * sy).astype(int),
-            0, out_h - 1,
-        )
-        arr[ys, xs] = col
-
-    # ── Animaux (5×5 px) ──────────────────────────────────────────────────────
-    for ind in snap.individuals:
-        if not ind.alive:
-            continue
-        col = colors.get(ind.species, (255, 165, 0))
-        cx  = int(np.clip(round(ind.x * sx), 2, out_w - 3))
-        cy  = int(np.clip(round(ind.y * sy), 2, out_h - 3))
-        arr[cy - 2:cy + 3, cx - 2:cx + 3] = col
-
-    buf = io.BytesIO()
-    Image.fromarray(arr, "RGB").save(buf, format="PNG", optimize=False)
-    return buf.getvalue()
+    return render_snapshot_frame(snap, terrain, colors, world_w, world_h, out_w, out_h)
 
 
 def _get_frame_png(db: str, tick: int, out_w: int, out_h: int) -> bytes:
-    """Frame PNG avec cache.  Thread-safe."""
+    """Sert un PNG de frame. Priorité : table renders > cache mémoire > re-rendu."""
     key = (db, tick, out_w, out_h)
     with _cache_lock:
         if key in _frame_cache:
             return _frame_cache[key]
-    png = _render_frame_png(db, tick, out_w, out_h)
+
+    # Essaie d'abord la table renders (pré-rendu pendant la simulation)
+    png = _get_stored_frame_png(db, tick)
+
+    if png is None:
+        # Fallback : re-rendu depuis WorldSnapshot (anciens .db)
+        png = _render_frame_png_fallback(db, tick, out_w, out_h)
+
     with _cache_lock:
         _frame_cache[key] = png
     return png
@@ -171,16 +158,20 @@ def _read_replay_meta(db: str) -> dict:
     reader = ReplayReader(Path(db))
     m      = reader.meta
     ticks  = reader._keyframe_ticks
+    last_kf   = ticks[-1] if ticks else 0
+    max_ticks = int(m.get("max_ticks", last_kf))   # durée configurée par l'utilisateur
     result = {
         "seed":           int(m.get("seed", 42)),
         "preset":         m.get("terrain_preset", "default"),
         "world_w":        int(m.get("world_width",  500)),
         "world_h":        int(m.get("world_height", 500)),
-        "total_ticks":    reader.total_ticks,
+        "total_ticks":    last_kf,
+        "max_ticks":      max_ticks,
         "min_tick":       reader.min_tick,
         "keyframe_ticks": ticks,
         "n_keyframes":    len(ticks),
         "version":        m.get("engine_version", "?"),
+        "run_id":         m.get("run_id", ""),
     }
     reader.close()
     return result
@@ -196,11 +187,7 @@ def _read_frame_json(db: str, tick: int) -> dict:
         return {"tick": tick, "plants": [], "individuals": [], "counts": {}}
     return {
         "tick": snap.tick,
-        "plants": [
-            {"id": e.id, "x": round(e.x, 1), "y": round(e.y, 1),
-             "sp": e.species, "energy": round(e.energy, 1), "age": e.age}
-            for e in snap.plants if e.alive
-        ],
+        "plants": [],
         "individuals": [
             {"id": e.id, "sp": e.species,
              "x": round(e.x, 1), "y": round(e.y, 1),
@@ -209,6 +196,18 @@ def _read_frame_json(db: str, tick: int) -> dict:
         ],
         "counts": snap.species_counts,
     }
+
+
+def _quick_meta(db_path: str, key: str) -> str:
+    """Lit une valeur meta depuis un .db sans ouvrir un ReplayReader complet."""
+    import sqlite3
+    try:
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        row  = conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        conn.close()
+        return row[0] if row else ""
+    except Exception:
+        return ""
 
 
 def _render_preview_png(seed: int, preset: str,
@@ -271,8 +270,17 @@ async def api_terrain_preview(request):
 
 
 async def api_sim_start(request):
-    config = await request.json()
-    ok     = _mgr.start(config)
+    config  = await request.json()
+    db_path = config.get("out_path", "runs/sim.db")
+    # Invalider le cache mémoire pour ce chemin avant toute nouvelle simulation
+    with _cache_lock:
+        for key in list(_frame_cache.keys()):
+            if key[0] == db_path:
+                del _frame_cache[key]
+        for key in list(_terrain_cache.keys()):
+            if key[0] == db_path:
+                del _terrain_cache[key]
+    ok = _mgr.start(config)
     return web.json_response({"ok": ok, "already_running": not ok})
 
 
@@ -289,6 +297,8 @@ async def api_runs(request):
                 "path":    p.as_posix(),
                 "name":    p.name,
                 "size_mb": round(p.stat().st_size / 1e6, 2),
+                "run_id":  _quick_meta(str(p), "run_id"),
+                "mtime":   int(p.stat().st_mtime),
             })
     return web.json_response(result)
 
@@ -329,7 +339,7 @@ async def api_frame_img(request):
     loop = asyncio.get_event_loop()
     png  = await loop.run_in_executor(None, _get_frame_png, db, tick, w, h)
     return web.Response(body=png, content_type="image/png",
-                        headers={"Cache-Control": "max-age=3600"})
+                        headers={"Cache-Control": "no-store"})
 
 
 async def api_frame_json(request):
@@ -356,15 +366,15 @@ async def api_prerender(request):
 
 
 async def _prerender_all(db: str, w: int, h: int) -> None:
-    """Tâche asyncio : pré-rend toutes les frames du .db dans le pool threads."""
+    """Tâche asyncio : warm le cache mémoire pour les frames pas encore en cache."""
     from simulation.recording.replay import ReplayReader
     reader = ReplayReader(Path(db))
     ticks  = list(reader._keyframe_ticks)
     reader.close()
     loop = asyncio.get_event_loop()
-    # Pré-render terrain d'abord (warm le cache)
+    # Warm terrain cache (utile pour le fallback re-rendu des anciens .db)
     await loop.run_in_executor(None, _get_terrain_arr, db, w, h)
-    # Puis toutes les frames
+    # Warm frame cache (lit depuis la table renders si disponible, sinon re-rend)
     for tick in ticks:
         await loop.run_in_executor(None, _get_frame_png, db, tick, w, h)
 
@@ -391,6 +401,167 @@ async def websocket_handler(request):
     return ws
 
 
+# ── Analyse helpers ──────────────────────────────────────────────────────────
+
+def _read_timeseries(db: str) -> list:
+    """Toutes les populations par keyframe. Lit la table counts (rapide) ou dégrade."""
+    import sqlite3, gzip
+    conn = sqlite3.connect(db, check_same_thread=False)
+    try:
+        rows = conn.execute("SELECT tick, data FROM counts ORDER BY tick").fetchall()
+        if rows:
+            conn.close()
+            return [{"tick": t, "counts": json.loads(d)} for t, d in rows]
+    except Exception:
+        pass
+    # Fallback : lit les keyframes complètes
+    rows = conn.execute("SELECT tick, data_blob FROM keyframes ORDER BY tick").fetchall()
+    conn.close()
+    result = []
+    for tick, blob in rows:
+        data = json.loads(gzip.decompress(blob))
+        result.append({"tick": tick, "counts": data["species_counts"]})
+    return result
+
+
+def _read_genealogy(db: str, entity_id: int) -> dict:
+    """Arbre généalogique autour de entity_id (2 générations up + 2 down)."""
+    import sqlite3
+    conn = sqlite3.connect(db, check_same_thread=False)
+    rows = conn.execute(
+        "SELECT entity_id, tick, payload FROM events WHERE kind='birth'"
+    ).fetchall()
+    conn.close()
+
+    by_id: dict    = {}
+    by_parent: dict = {}
+    for eid, tick, payload_str in rows:
+        p   = json.loads(payload_str)
+        pid = p.get("parent_id", -1)
+        by_id[eid] = {"id": eid, "birth_tick": tick,
+                      "species": p.get("species", "?"), "parent_id": pid}
+        by_parent.setdefault(pid, []).append(eid)
+
+    def enrich(info: dict) -> dict:
+        r = dict(info)
+        r["children_count"] = len(by_parent.get(r["id"], []))
+        return r
+
+    subject = enrich(by_id.get(entity_id,
+                     {"id": entity_id, "birth_tick": -1, "species": "?", "parent_id": -1}))
+
+    # Ancêtres (3 niveaux)
+    ancestors = []
+    cur = subject["parent_id"]
+    for _ in range(3):
+        if cur <= 0:
+            break
+        if cur in by_id:
+            ancestors.append(enrich(by_id[cur]))
+            cur = by_id[cur]["parent_id"]
+        else:
+            ancestors.append({"id": cur, "birth_tick": 0,
+                               "species": subject["species"],
+                               "parent_id": -1, "children_count": 1})
+            break
+
+    # Descendants (enfants + petits-enfants)
+    desc = []
+    for cid in by_parent.get(entity_id, [])[:40]:
+        if cid in by_id:
+            c = enrich(by_id[cid])
+            desc.append(c)
+            for gcid in by_parent.get(cid, [])[:15]:
+                if gcid in by_id:
+                    desc.append(enrich(by_id[gcid]))
+
+    return {
+        "subject":     subject,
+        "ancestors":   list(reversed(ancestors)),
+        "descendants": desc,
+    }
+
+
+def _read_day_info(db: str, day: int) -> dict:
+    """Snapshot de population au début du jour day (1-indexed)."""
+    from simulation.engine_const import DAY_LENGTH
+    from simulation.recording.replay import ReplayReader
+    target_tick = day * DAY_LENGTH
+    reader = ReplayReader(Path(db))
+    snap   = reader.state_at(target_tick)
+    actual = reader._best_keyframe(target_tick)
+    min_t  = reader.min_tick
+    max_t  = int(reader.meta.get("max_ticks", 0))
+    reader.close()
+    counts = snap.species_counts if snap else {}
+    return {"day": day, "tick": actual, "min_tick": min_t,
+            "max_ticks": max_t, "counts": counts}
+
+
+def _read_stats(db: str) -> dict:
+    """Statistiques agrégées : naissances/espèce, max populations."""
+    import sqlite3
+    conn = sqlite3.connect(db, check_same_thread=False)
+    births_by_sp: dict = {}
+    try:
+        for (payload_str,) in conn.execute(
+                "SELECT payload FROM events WHERE kind='birth'"):
+            sp = json.loads(payload_str).get("species", "?")
+            births_by_sp[sp] = births_by_sp.get(sp, 0) + 1
+    except Exception:
+        pass
+    max_pops: dict = {}
+    try:
+        for (data,) in conn.execute("SELECT data FROM counts"):
+            for sp, n in json.loads(data).items():
+                if n > max_pops.get(sp, 0):
+                    max_pops[sp] = n
+    except Exception:
+        pass
+    conn.close()
+    return {"births_by_species": births_by_sp, "max_populations": max_pops}
+
+
+# ── Analyse endpoints ─────────────────────────────────────────────────────────
+
+async def api_timeseries(request):
+    db = request.rel_url.query.get("db", "")
+    if not db or not Path(db).exists():
+        raise web.HTTPNotFound()
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, _read_timeseries, db)
+    return web.json_response(data)
+
+
+async def api_genealogy(request):
+    db  = request.rel_url.query.get("db", "")
+    eid = int(request.rel_url.query.get("id", "0"))
+    if not db or not Path(db).exists():
+        raise web.HTTPNotFound()
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, _read_genealogy, db, eid)
+    return web.json_response(data)
+
+
+async def api_day_info(request):
+    db  = request.rel_url.query.get("db", "")
+    day = int(request.rel_url.query.get("day", "1"))
+    if not db or not Path(db).exists():
+        raise web.HTTPNotFound()
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, _read_day_info, db, day)
+    return web.json_response(data)
+
+
+async def api_stats(request):
+    db = request.rel_url.query.get("db", "")
+    if not db or not Path(db).exists():
+        raise web.HTTPNotFound()
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, _read_stats, db)
+    return web.json_response(data)
+
+
 # ── App factory + lancement ───────────────────────────────────────────────────
 
 def _build_app() -> web.Application:
@@ -407,11 +578,15 @@ def _build_app() -> web.Application:
     app.router.add_get ("/api/replay/frame_img",    api_frame_img)
     app.router.add_get ("/api/replay/frame_json",   api_frame_json)
     app.router.add_post("/api/replay/prerender",    api_prerender)
+    app.router.add_get ("/api/analyse/timeseries",  api_timeseries)
+    app.router.add_get ("/api/analyse/genealogy",   api_genealogy)
+    app.router.add_get ("/api/analyse/day_info",    api_day_info)
+    app.router.add_get ("/api/analyse/stats",       api_stats)
     app.router.add_get ("/ws",                      websocket_handler)
     return app
 
 
-def run(host: str = "127.0.0.1", port: int = 8765) -> None:
+def run(host: str = "0.0.0.0", port: int = 9000) -> None:
     import webbrowser, threading
 
     async def _start():
@@ -425,8 +600,8 @@ def run(host: str = "127.0.0.1", port: int = 8765) -> None:
         await runner.setup()
         site   = web.TCPSite(runner, host, port)
         await site.start()
-        print(f"[EcoSim] Interface web → http://{host}:{port}", flush=True)
-        threading.Timer(0.8, lambda: webbrowser.open(f"http://{host}:{port}")).start()
+        print(f"[EcoSim] Interface web → http://localhost:{port}", flush=True)
+        threading.Timer(0.8, lambda: webbrowser.open(f"http://localhost:{port}")).start()
         await asyncio.Event().wait()
 
     asyncio.run(_start())

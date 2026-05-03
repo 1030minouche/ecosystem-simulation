@@ -150,7 +150,7 @@ class SimulationEngine:
         self.tick_count += 1
         reg = self._registry
 
-        # ── Plantes (1 tick sur 10) ───────────────────────────────────────────
+        # ── Plantes (1 tick sur 3) ───────────────────────────────────────────
         if self.tick_count % 3 == 0:
             plant_count = len(self.plants)
             new_plants  = []
@@ -162,7 +162,7 @@ class SimulationEngine:
                 if p.alive:
                     surviving_plants.append(p)
                 else:
-                    reg._species_counts[p.species.name] = reg._species_counts.get(p.species.name, 0) - 1
+                    reg._species_counts[p.species.name] = max(0, reg._species_counts.get(p.species.name, 0) - 1)
             self.plants = surviving_plants
             if new_plants:
                 sp_pc = {}
@@ -206,11 +206,9 @@ class SimulationEngine:
         }
 
         # ── Animaux ──────────────────────────────────────────────────────────
-        # Rayons :
-        #   r_perc  = perception_radius → prédateurs, nourriture
-        #   r_repro = 3 × perception_radius → partenaire (reproduction._try_reproduce)
         time_of_day     = (self.tick_count % DAY_LENGTH) / DAY_LENGTH
         new_individuals = []
+        self._last_newborns: list = []
         for ind in self.individuals:
             r_perc  = ind.species.perception_radius
             r_repro = r_perc * 3.0
@@ -227,7 +225,7 @@ class SimulationEngine:
             if ind.alive:
                 surviving_inds.append(ind)
             else:
-                reg._species_counts[ind.species.name] = reg._species_counts.get(ind.species.name, 0) - 1
+                reg._species_counts[ind.species.name] = max(0, reg._species_counts.get(ind.species.name, 0) - 1)
                 if hasattr(ind, "death_cause"):
                     self.death_log.record(ind, self.tick_count)
         self.individuals = surviving_inds
@@ -247,6 +245,7 @@ class SimulationEngine:
 
         for baby in new_individuals:
             reg._species_counts[baby.species.name] = reg._species_counts.get(baby.species.name, 0) + 1
+        self._last_newborns = new_individuals
         self.individuals.extend(new_individuals)
 
         reg.detect_extinctions(self.tick_count)

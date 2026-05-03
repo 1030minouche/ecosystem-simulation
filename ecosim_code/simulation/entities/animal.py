@@ -24,7 +24,7 @@ from entities.movement import MovementMixin
 from entities.feeding import FeedingMixin
 from entities.reproduction import ReproductionMixin
 from entities.death import mark_dead
-import random
+from entities.rng import rng
 
 
 @dataclass
@@ -43,6 +43,9 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
     # Territoire natal (-1 = non défini)
     home_x: float = -1.0
     home_y: float = -1.0
+
+    # Généalogie : ID Python de la mère (-1 = fondateur, spawn initial)
+    parent_id: int = -1
 
     # ── Boucle de vie ─────────────────────────────────────────────────────────
 
@@ -68,7 +71,7 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
         if (self.species.juvenile_mortality_rate > 0
                 and self.species.sexual_maturity_ticks > 0
                 and self.age < self.species.sexual_maturity_ticks):
-            if random.random() < self.species.juvenile_mortality_rate:
+            if rng.random() < self.species.juvenile_mortality_rate:
                 mark_dead(self, "juvenile_mortality", grid, time_of_day,
                           is_night=_is_resting(time_of_day, self.species.activity_pattern))
                 return newborns
@@ -109,7 +112,7 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
         self._update_state(predator)
 
         if self.state == "seek_food":
-            self._seek_food(grid, all_plants, all_individuals)
+            self._seek_food(grid, all_plants, all_individuals, time_of_day)
         elif self.state == "flee":
             self._flee(predator)
         elif self.state == "reproduce":
@@ -160,6 +163,13 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
             self.energy -= dmg
         if grid.soil_type[cy, cx] == "water" and not self.species.can_swim:
             self.energy -= dmg
+        if (self.species.altitude_min != 0.0 or self.species.altitude_max != 1.0):
+            alt = float(grid.altitude[cy, cx])
+            if not (self.species.altitude_min <= alt <= self.species.altitude_max):
+                self.energy -= dmg
+        humidity = float(grid.humidity[cy, cx])
+        if not (self.species.humidity_min <= humidity <= self.species.humidity_max):
+            self.energy -= dmg * 0.5
 
     # ── Prédateur le plus proche ──────────────────────────────────────────────
 

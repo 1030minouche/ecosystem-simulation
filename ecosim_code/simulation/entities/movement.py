@@ -9,9 +9,9 @@ Regroupe toutes les méthodes liées au mouvement :
 """
 
 import math
-import random
 
 from entities.activity import TICKS_PER_SECOND
+from entities.rng import rng
 
 
 class MovementMixin:
@@ -33,18 +33,18 @@ class MovementMixin:
 
         if need_new:
             if self.species.can_swim or flies:
-                self.explore_x = random.uniform(2, grid.width  - 3)
-                self.explore_y = random.uniform(2, grid.height - 3)
+                self.explore_x = rng.uniform(2, grid.width  - 3)
+                self.explore_y = rng.uniform(2, grid.height - 3)
             else:
                 for _ in range(15):
-                    ex = random.uniform(2, grid.width  - 3)
-                    ey = random.uniform(2, grid.height - 3)
+                    ex = rng.uniform(2, grid.width  - 3)
+                    ey = rng.uniform(2, grid.height - 3)
                     if grid.soil_type[int(ey), int(ex)] != "water":
                         self.explore_x, self.explore_y = ex, ey
                         break
                 else:
-                    self.explore_x = random.uniform(2, grid.width  - 3)
-                    self.explore_y = random.uniform(2, grid.height - 3)
+                    self.explore_x = rng.uniform(2, grid.width  - 3)
+                    self.explore_y = rng.uniform(2, grid.height - 3)
 
         # ── Cohésion de troupeau ──────────────────────────────────────────────
         # Biaise la cible d'exploration vers le centroïde pré-calculé par le moteur.
@@ -57,7 +57,7 @@ class MovementMixin:
         dy = self.explore_y - self.y
         target_angle = math.atan2(dy, dx)
         angle_diff = (target_angle - self.wander_angle + math.pi) % (2 * math.pi) - math.pi
-        self.wander_angle += angle_diff * 0.3 + random.uniform(-0.15, 0.15)
+        self.wander_angle += angle_diff * 0.3 + rng.uniform(-0.15, 0.15)
         # Les volants en vol bénéficient d'un bonus de vitesse (+40%)
         air_bonus = 1.4 if self.species.is_flying() and self.state == "en_vol" else 1.0
         step = self.species.speed / TICKS_PER_SECOND * speed_factor * air_bonus

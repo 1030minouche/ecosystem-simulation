@@ -5,8 +5,6 @@ Tests pour simulation/engine.py
   - Variabilité inter-simulation (sample_params intégré)
   - Un seul objet Species partagé par tous les individus d'une simulation
 """
-import random
-
 import pytest
 from simulation.engine import SimulationEngine, DAY_LENGTH
 from world.grid import Grid
@@ -157,8 +155,7 @@ class TestInterSimulationVariability:
         """Avec std=0, chaque simulation doit avoir la même valeur."""
         speeds = set()
         for seed in range(10):
-            random.seed(seed)
-            eng = SimulationEngine(_make_grid())
+            eng = SimulationEngine(_make_grid(), seed=seed)
             eng.add_species(_LAPIN, count=1)
             speeds.add(round(eng.species_list[0].speed, 8))
         assert len(speeds) == 1, "std=0 doit donner la même vitesse partout"
@@ -170,8 +167,7 @@ class TestInterSimulationVariability:
 
         speeds = set()
         for seed in range(20):
-            random.seed(seed)
-            eng = SimulationEngine(_make_grid())
+            eng = SimulationEngine(_make_grid(), seed=seed)
             eng.add_species(params, count=1)
             speeds.add(round(eng.species_list[0].speed, 4))
 
@@ -184,8 +180,7 @@ class TestInterSimulationVariability:
         params["speed_std"] = 100.0   # σ énorme
 
         for seed in range(50):
-            random.seed(seed)
-            eng = SimulationEngine(_make_grid())
+            eng = SimulationEngine(_make_grid(), seed=seed)
             eng.add_species(params, count=1)
             assert eng.species_list[0].speed >= 0.0
 

@@ -2,8 +2,8 @@
 Registre des espèces : spawn, comptage, extinction, pré-calcul des cellules valides.
 """
 
-import random
 import numpy as np
+from entities.rng import rng as _ent_rng
 from entities.species import Species, sample_params
 from entities.animal import Individual
 from entities.plant import Plant
@@ -55,11 +55,10 @@ class SpeciesRegistry:
         if pool is None or len(pool) == 0:
             return
 
-        rng     = np.random.default_rng()
-        choices = rng.integers(0, len(pool), size=count)
+        choices = _ent_rng.generator.integers(0, len(pool), size=count)
         spawned = 0
         while spawned < count:
-            idx  = choices[spawned] if spawned < len(choices) else rng.integers(0, len(pool))
+            idx  = choices[spawned] if spawned < len(choices) else _ent_rng.generator.integers(0, len(pool))
             y, x = pool[idx]
             if sp_template.is_plant():
                 core.plants.append(Plant(species=sp_template, x=int(x), y=int(y)))
@@ -67,9 +66,9 @@ class SpeciesRegistry:
                 sp_ind = Species(**sample_params(species_data))
                 core.individuals.append(Individual(
                     species=sp_ind, x=float(x), y=float(y),
-                    energy=sp_ind.energy_start * random.uniform(0.5, 1.0),
-                    sex=random.choice(["male", "female"]),
-                    age=random.randint(0, sp_ind.max_age // 2),
+                    energy=sp_ind.energy_start * _ent_rng.uniform(0.5, 1.0),
+                    sex=_ent_rng.choice(["male", "female"]),
+                    age=_ent_rng.randint(0, sp_ind.max_age // 2),
                     home_x=float(x), home_y=float(y),
                 ))
             spawned += 1

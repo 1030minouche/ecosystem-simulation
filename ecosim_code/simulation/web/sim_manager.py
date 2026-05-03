@@ -55,11 +55,28 @@ class SimulationManager:
         from simulation.engine import SimulationEngine
         from simulation.runner import EngineRunner
         from simulation.recording.recorder import Recorder
+        from web.renderer import terrain_arr_from_grid, render_engine_frame, RENDER_W, RENDER_H
 
         try:
-            size = config["grid_size"]
-            grid = Grid(width=size, height=size)
-            generate_terrain(grid, seed=config["seed"], preset=config.get("preset", "default"))
+            size   = config["grid_size"]
+            preset = config.get("preset", "default")
+            grid   = Grid(width=size, height=size)
+            generate_terrain(grid, seed=config["seed"], preset=preset)
+
+            # Couleurs espèces (depuis les JSON)
+            colors: dict[str, tuple] = {}
+            for sp_cfg in config["species"]:
+                p = sp_cfg.get("params", {})
+                name = p.get("name")
+                col  = p.get("color")
+                if name and col:
+                    colors[name] = tuple(int(c * 255) for c in col[:3])
+
+            # Terrain pré-rendu une seule fois (shared par toutes les keyframes)
+            terrain_arr = terrain_arr_from_grid(grid, RENDER_W, RENDER_H)
+
+            def frame_renderer(engine, tick):
+                return render_engine_frame(engine, terrain_arr, colors, RENDER_W, RENDER_H)
 
             engine = SimulationEngine(grid, seed=config["seed"])
             for sp in config["species"]:
@@ -69,15 +86,20 @@ class SimulationManager:
                 params["color"] = tuple(params["color"])
                 engine.add_species(params, count=sp["count"])
 
+            total    = config["ticks"]
             out_path = Path(config.get("out_path", "runs/sim.db"))
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            recorder = Recorder(out_path)
+            if out_path.exists():
+                out_path.unlink()   # repart toujours d'un .db vierge
+            # ~400 keyframes quelle que soit la durée, mini 3 ticks entre deux
+            kf_every = max(3, total // 400)
+            recorder = Recorder(out_path, keyframe_every=kf_every, frame_renderer=frame_renderer)
             recorder.write_engine_meta(engine)
-            recorder.write_meta("terrain_preset", config.get("preset", "default"))
+            recorder.write_meta("terrain_preset", preset)
+            recorder.write_meta("max_ticks", str(total))
 
             t0         = time.monotonic()
             start_tick = engine.tick_count
-            total      = config["ticks"]
 
             def on_progress(tick: int, counts: dict) -> None:
                 elapsed = time.monotonic() - t0

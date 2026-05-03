@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from entities.base import Entity
-import random
+from entities.rng import rng
 import math
 
 @dataclass
@@ -44,10 +44,10 @@ class Plant(Entity):
 
         if (self.growth > 0.8
                 and self.reproduction_cooldown == 0
-                and random.random() < self.species.reproduction_rate
+                and rng.random() < self.species.reproduction_rate
                 and plant_count < self.species.max_population):
-            angle  = random.uniform(0, 2 * math.pi)
-            radius = random.uniform(1, self.species.dispersal_radius)
+            angle  = rng.uniform(0, 2 * math.pi)
+            radius = rng.uniform(1, self.species.dispersal_radius)
             nx = int(self.x + math.cos(angle) * radius)
             ny = int(self.y + math.sin(angle) * radius)
 
