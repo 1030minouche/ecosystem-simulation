@@ -68,7 +68,7 @@ class EngineRunner:
         )
 
         return RunSummary(
-            ticks_done=max_ticks,
+            ticks_done=engine.tick_count - (target - max_ticks),
             elapsed_s=elapsed,
             final_populations=dict(engine.species_counts),
             death_causes=death_causes,

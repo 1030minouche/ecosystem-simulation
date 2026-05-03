@@ -9,17 +9,17 @@ un import circulaire avec entities.animal.
 """
 
 import math
-import random
 
 from entities.activity import TICKS_PER_SECOND
+from entities.rng import rng
 from entities.species import blend_species
 
 
 def _spawn_offspring(parent, grid, species, energy_factor: float = 0.5,
                      spread: float = 2.0) -> object:
     """Crée un nouveau-né près du parent avec fallback hors eau."""
-    bx = parent.x + random.uniform(-spread, spread)
-    by = parent.y + random.uniform(-spread, spread)
+    bx = parent.x + rng.uniform(-spread, spread)
+    by = parent.y + rng.uniform(-spread, spread)
     if not parent.species.can_swim:
         ibx, iby = int(bx), int(by)
         if (0 <= ibx < grid.width and 0 <= iby < grid.height
@@ -29,8 +29,8 @@ def _spawn_offspring(parent, grid, species, energy_factor: float = 0.5,
         species=species,
         x=bx, y=by,
         energy=species.energy_start * energy_factor,
-        sex=random.choice(["male", "female"]),
-        wander_angle=random.uniform(0, 2 * math.pi),
+        sex=rng.choice(["male", "female"]),
+        wander_angle=rng.uniform(0, 2 * math.pi),
         home_x=bx, home_y=by,
         parent_id=id(parent),
     )
@@ -95,12 +95,12 @@ class ReproductionMixin:
         if self.species.fear_factor > 0 and n_predators > 0:
             effective_rate /= (1.0 + self.species.fear_factor * n_predators)
 
-        if random.random() >= effective_rate:
+        if rng.random() >= effective_rate:
             return []
 
         # ── Fécondation ────────────────────────────────────────────────────
-        litter = random.randint(self.species.litter_size_min,
-                                self.species.litter_size_max)
+        litter = rng.randint(self.species.litter_size_min,
+                             self.species.litter_size_max)
 
         # Coût énergétique pour les deux parents
         cost = self.species.energy_start * 0.20
@@ -116,7 +116,7 @@ class ReproductionMixin:
             self.gestation_timer   = self.species.gestation_ticks
             self.gestation_count   = litter
             self.gestation_species = baby_sp
-            nearest_partner.reproduction_cooldown = self.species.reproduction_cooldown_length
+            nearest_partner.reproduction_cooldown = self.species.gestation_ticks
             return []
         else:
             # Naissance instantanée

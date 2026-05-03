@@ -150,7 +150,7 @@ class SimulationEngine:
         self.tick_count += 1
         reg = self._registry
 
-        # ── Plantes (1 tick sur 10) ───────────────────────────────────────────
+        # ── Plantes (1 tick sur 3) ───────────────────────────────────────────
         if self.tick_count % 3 == 0:
             plant_count = len(self.plants)
             new_plants  = []
@@ -162,7 +162,7 @@ class SimulationEngine:
                 if p.alive:
                     surviving_plants.append(p)
                 else:
-                    reg._species_counts[p.species.name] = reg._species_counts.get(p.species.name, 0) - 1
+                    reg._species_counts[p.species.name] = max(0, reg._species_counts.get(p.species.name, 0) - 1)
             self.plants = surviving_plants
             if new_plants:
                 sp_pc = {}
@@ -225,7 +225,7 @@ class SimulationEngine:
             if ind.alive:
                 surviving_inds.append(ind)
             else:
-                reg._species_counts[ind.species.name] = reg._species_counts.get(ind.species.name, 0) - 1
+                reg._species_counts[ind.species.name] = max(0, reg._species_counts.get(ind.species.name, 0) - 1)
                 if hasattr(ind, "death_cause"):
                     self.death_log.record(ind, self.tick_count)
         self.individuals = surviving_inds

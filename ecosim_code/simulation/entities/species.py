@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, fields as dc_fields
 from enum import Enum
 from typing import List
-import random
+from entities.rng import rng
 
 
 class SpeciesType(str, Enum):
@@ -33,9 +33,9 @@ def sample_params(params: dict) -> dict:
             continue
         std = params.get(f"{key}_std", 0.0) or 0.0
         if std > 0 and key in _VARIABLE_FLOAT:
-            result[key] = max(0.0, random.gauss(val, std))
+            result[key] = max(0.0, rng.gauss(val, std))
         elif std > 0 and key in _VARIABLE_INT:
-            result[key] = max(0, round(random.gauss(val, std)))
+            result[key] = max(0, round(rng.gauss(val, std)))
         else:
             result[key] = val
     return result
@@ -125,13 +125,13 @@ class Species:
 
     # Comportement de troupeau
     herd_cohesion: float = 0.0               # 0 = solitaire, 1 = colle au groupe
+                                             # lors du wander, biaise la cible vers le centroïde
+                                             # des congénères proches (rayon = 2.5 × perception)
 
     # Génétique
     mutation_rate: float = 0.0               # écart-type relatif appliqué à chaque param
                                              # variable lors de la reproduction
                                              # (ex: 0.05 → ±5% de chaque valeur moyenne)
-                                             # lors du wander, biaise la cible vers le centroïde
-                                             # des congénères proches (rayon = 2.5 × perception)
 
     # Territoire / habitat
     territory_radius: float = 0.0            # rayon du territoire autour du lieu de naissance
@@ -158,12 +158,12 @@ def blend_species(s1: "Species", s2: "Species", mutation_rate: float = 0.0) -> "
         if f.name in _VARIABLE_FLOAT:
             mean = (v1 + v2) / 2.0
             if mutation_rate > 0:
-                mean = max(0.0, random.gauss(mean, abs(mean) * mutation_rate))
+                mean = max(0.0, rng.gauss(mean, abs(mean) * mutation_rate))
             kwargs[f.name] = mean
         elif f.name in _VARIABLE_INT:
             mean = (v1 + v2) / 2.0
             if mutation_rate > 0:
-                mean = max(0.0, random.gauss(mean, abs(mean) * mutation_rate))
+                mean = max(0.0, rng.gauss(mean, abs(mean) * mutation_rate))
             kwargs[f.name] = max(0, round(mean))
         else:
             kwargs[f.name] = v1

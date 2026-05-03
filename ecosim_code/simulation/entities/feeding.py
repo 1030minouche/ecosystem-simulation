@@ -7,9 +7,9 @@ Fonctionne pour les herbivores (cibles : plantes), les carnivores
 """
 
 import math
-import random
 
 from entities.activity import TICKS_PER_SECOND, _is_resting
+from entities.rng import rng
 from entities.death import mark_dead
 
 
@@ -69,7 +69,7 @@ class FeedingMixin:
             dhx = target.x - target.home_x
             dhy = target.y - target.home_y
             if dhx * dhx + dhy * dhy <= target.species.territory_radius ** 2:
-                if random.random() < target.species.home_protection:
+                if rng.random() < target.species.home_protection:
                     caught = False
 
         if not caught:

@@ -32,8 +32,11 @@ class Snapshotter:
         }
 
     def get_state_snapshot(self) -> dict:
-        core        = self._core
-        tick        = core.tick_count
+        core = self._core
+        with core.lock:
+            plants = list(core.plants)
+            indivs = list(core.individuals)
+            tick   = core.tick_count
         time_of_day = (tick % DAY_LENGTH) / DAY_LENGTH
         sim_day     = (tick // DAY_LENGTH) % 365
         sim_year    = tick // SIM_YEAR + 1
@@ -51,7 +54,7 @@ class Snapshotter:
                     "species": p.species.name,
                     "color":   list(p.species.color),
                     "growth":  round(p.growth, 2),
-                } for p in core.plants
+                } for p in plants
             ] + [
                 {
                     "x":       round(i.x, 1),
@@ -60,7 +63,7 @@ class Snapshotter:
                     "species": i.species.name,
                     "color":   list(i.species.color),
                     "state":   i.state,
-                } for i in core.individuals
+                } for i in indivs
             ],
         }
 
