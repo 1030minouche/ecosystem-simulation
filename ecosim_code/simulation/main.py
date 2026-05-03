@@ -18,7 +18,7 @@ parser.add_argument("--seed",      type=int,  default=None)
 parser.add_argument("--out",       type=str,  default=None)
 parser.add_argument("--config",    type=str,  default=None)
 parser.add_argument("--progress",  action="store_true")
-parser.add_argument("--port",      type=int,  default=8765)
+parser.add_argument("--port",      type=int,  default=9000)
 args, _ = parser.parse_known_args()
 
 if args.headless:
