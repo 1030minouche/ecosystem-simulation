@@ -1,61 +1,42 @@
-import glob
-import json
-import os
-import threading
-import time
-from world.grid import Grid
-from world.terrain import generate_terrain
-from simulation.engine import SimulationEngine
+"""
+EcoSim — point d'entrée.
 
-os.makedirs("saves", exist_ok=True)
+Usage:
+  python main.py                             # Interface web localhost:8765
+  python main.py --tk                        # Ancien GUI tkinter
+  python main.py --headless --ticks N        # Headless CLI
+  python main.py --port 9000                 # Port custom
+"""
+import argparse
+import sys
 
-# ── Initialisation ────────────────────────────────────────────────────────────
+parser = argparse.ArgumentParser(add_help=False)
+parser.add_argument("--headless",  action="store_true")
+parser.add_argument("--tk",        action="store_true", help="Ancien GUI tkinter")
+parser.add_argument("--ticks",     type=int,  default=10000)
+parser.add_argument("--seed",      type=int,  default=None)
+parser.add_argument("--out",       type=str,  default=None)
+parser.add_argument("--config",    type=str,  default=None)
+parser.add_argument("--progress",  action="store_true")
+parser.add_argument("--port",      type=int,  default=9000)
+args, _ = parser.parse_known_args()
 
-grid = Grid(width=500, height=500)
-generate_terrain(grid, seed=42)
-engine = SimulationEngine(grid)
+if args.headless:
+    from simulation.headless import run_headless
+    run_headless(
+        ticks=args.ticks,
+        seed=args.seed,
+        config_path=args.config,
+        out_path=args.out,
+        progress=args.progress,
+    )
+    sys.exit(0)
 
-# ── Éditeur de terrain (bloquant — s'exécute dans le thread principal) ────────
+if args.tk:
+    from gui.app import EcoSimApp
+    EcoSimApp().run()
+    sys.exit(0)
 
-print("=" * 60)
-print("  EcoSim — Éditeur de terrain")
-print("  Configurez le terrain puis cliquez Confirmer.")
-print("=" * 60)
-
-from gui.terrain_editor import TerrainEditorGUI
-
-def _noop(_=None): pass
-
-gui = TerrainEditorGUI(engine.grid, _noop, _noop)
-result = gui.run()
-print("Terrain", "confirmé." if result == "confirm" else "annulé (terrain original conservé).")
-
-# ── Chargement des espèces APRÈS confirmation du terrain ─────────────────────
-# (les cellules valides pour le spawn dépendent du terrain final)
-
-_species_dir = os.path.join(os.path.dirname(__file__), "species")
-for _path in sorted(glob.glob(os.path.join(_species_dir, "*.json"))):
-    with open(_path, encoding="utf-8") as _f:
-        _spec = json.load(_f)
-    _params = _spec["params"]
-    _params["color"] = tuple(_params["color"])
-    engine.add_species(_params, count=_spec["count"])
-
-# ── Thread de simulation ──────────────────────────────────────────────────────
-
-TICK_INTERVAL = 0.050   # 50 ms entre chaque batch → 20 fps de simulation à ×1
-
-def _sim_loop():
-    while True:
-        if engine.running:
-            with engine.lock:
-                for _ in range(engine.speed):
-                    engine.tick()
-        time.sleep(TICK_INTERVAL)
-
-threading.Thread(target=_sim_loop, daemon=True).start()
-
-# ── Viewer 2D (thread principal tkinter) ─────────────────────────────────────
-
-from gui.viewer import SimViewer
-SimViewer(engine).run()
+# Default: web UI
+from web.server import run as run_web
+run_web(port=args.port)

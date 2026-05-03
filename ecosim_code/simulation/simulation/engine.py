@@ -1,142 +1,235 @@
-import random
+"""
+SimulationEngine — façade qui agrège EngineCore, SpeciesRegistry et Snapshotter.
+
+Toutes les méthodes publiques historiques restent disponibles pour la
+compatibilité ascendante. Les implémentations vivent dans :
+  - simulation/species_registry.py  (spawn, comptage, extinction)
+  - simulation/snapshotter.py       (snapshots WebSocket, rapport)
+"""
+
 import threading
 from world.grid import Grid
 from world.spatial_grid import SpatialGrid
-from entities.species import Species, sample_params
-from entities.animal import Individual
-from entities.plant import Plant
 from monitoring.report import SimulationReport
 from monitoring.logger import SimulationLogger
 from monitoring.death_log import DeathLogger
+from simulation.utils.counting import count_by_species
+from simulation.species_registry import SpeciesRegistry
+from simulation.snapshotter import Snapshotter
+from simulation.snapshot_view import SimulationSnapshot, EntityView
+from simulation.engine_const import DAY_LENGTH, SIM_YEAR
+import entities.rng as _entity_rng_module
 
-DAY_LENGTH = 1_200        # ticks par jour simulé  (20 ticks/s × 60 s = 1 min réelle)
-SIM_YEAR   = 438_000     # ticks par an (365 × 1 200)
 
 class SimulationEngine:
-    def __init__(self, grid: Grid):
-        self.grid = grid
-        self.running  = False
+    def __init__(self, grid: Grid, seed: int | None = None):
+        _entity_rng_module.rng.reset(seed)
+        self.seed       = seed
+        self.grid       = grid
+        self.running    = False
         self.tick_count = DAY_LENGTH // 2
-        self.speed    = 1
-        self.individuals  = []
-        self.plants       = []
-        self.species_list = []
+        self.speed      = 1
+        self.individuals: list = []
+        self.plants:      list = []
+
         self.report    = SimulationReport()
         self.logger    = SimulationLogger()
         self.death_log = DeathLogger()
-        self._extinct              = set()
-        self._default_counts       = {}
-        self._population_overrides = {}
-        self._species_raw_params   = {}   # raw params (avec *_std) par nom d'espèce
-        self.lock = threading.RLock()     # protège individuals/plants contre les accès concurrents
 
-    # ── Configuration ────────────────────────────────────────────────────────
+        self.lock = threading.Lock()
+        self._ind_grid   = SpatialGrid(1.0)
+        self._plant_grid = SpatialGrid(1.0)
+
+        # Composants extraits
+        self._registry    = SpeciesRegistry(self)
+        self._snapshotter = Snapshotter(self, self._registry)
+
+    # ── Délégation SpeciesRegistry ───────────────────────────────────────────
+
+    @property
+    def species_list(self) -> list:
+        return self._registry.species_list
+
+    @species_list.setter
+    def species_list(self, value: list) -> None:
+        self._registry.species_list = value
+
+    @property
+    def species_counts(self) -> dict[str, int]:
+        return self._registry.species_counts
+
+    @property
+    def _species_counts(self) -> dict[str, int]:
+        return self._registry._species_counts
+
+    @_species_counts.setter
+    def _species_counts(self, value: dict) -> None:
+        self._registry._species_counts = value
+
+    @property
+    def _max_perception(self) -> float:
+        return self._registry._max_perception
+
+    @_max_perception.setter
+    def _max_perception(self, value: float) -> None:
+        self._registry._max_perception = value
+
+    @property
+    def _default_counts(self) -> dict:
+        return self._registry._default_counts
+
+    @property
+    def _population_overrides(self) -> dict:
+        return self._registry._population_overrides
+
+    @_population_overrides.setter
+    def _population_overrides(self, value: dict) -> None:
+        self._registry._population_overrides = value
+
+    @property
+    def _species_raw_params(self) -> dict:
+        return self._registry._species_raw_params
+
+    @property
+    def _extinct(self) -> set:
+        return self._registry._extinct
 
     def set_population_overrides(self, counts: dict) -> None:
-        self._population_overrides = {k: max(0, int(v)) for k, v in counts.items()}
+        self._registry.set_population_overrides(counts)
 
-    def add_species(self, species_data: dict, count: int = 20):
-        # Template (un tirage pour l'identité dans species_list)
-        sp_template = Species(**sample_params(species_data))
-        self._default_counts[sp_template.name] = count
-        self._species_raw_params[sp_template.name] = species_data
-        self.species_list.append(sp_template)
+    def add_species(self, species_data: dict, count: int = 20) -> None:
+        self._registry.add_species(species_data, count=count)
 
-        # Spawn exactement `count` entités sur des cellules non-eau.
-        # Chaque animal reçoit son propre tirage de paramètres individuels.
-        # Les plantes partagent le template (pas de reproduction sexuée).
-        #
-        # On pré-calcule les cellules terrestres disponibles pour garantir
-        # un spawn correct même sur un terrain de type île (majorité d'eau).
-        can_swim = sp_template.can_swim or sp_template.type == "volant"
-        if can_swim:
-            valid_cells = [(x, y)
-                           for y in range(self.grid.height)
-                           for x in range(self.grid.width)]
-        else:
-            valid_cells = [(x, y)
-                           for y in range(self.grid.height)
-                           for x in range(self.grid.width)
-                           if self.grid.cells[y][x].soil_type != "water"]
+    # ── Délégation Snapshotter ───────────────────────────────────────────────
 
-        if not valid_cells:
-            return  # aucune cellule valide (terrain entièrement eau)
+    def get_terrain_snapshot(self) -> dict:
+        return self._snapshotter.get_terrain_snapshot()
 
-        spawned = 0
-        while spawned < count:
-            x, y = random.choice(valid_cells)
-            if sp_template.type == "plant":
-                self.plants.append(Plant(species=sp_template, x=x, y=y))
-            else:
-                sp_ind = Species(**sample_params(species_data))
-                self.individuals.append(Individual(
-                    species=sp_ind, x=x, y=y,
-                    energy=sp_ind.energy_start * random.uniform(0.5, 1.0),
-                    sex=random.choice(["male", "female"]),
-                    age=random.randint(0, sp_ind.max_age // 2),
-                    home_x=float(x), home_y=float(y),
-                ))
-            spawned += 1
+    def get_state_snapshot(self) -> dict:
+        return self._snapshotter.get_state_snapshot()
+
+    def generate_report(self) -> str:
+        return self._snapshotter.generate_report()
+
+    # ── Snapshot immuable pour le viewer ─────────────────────────────────────
+
+    def snapshot_view(self) -> SimulationSnapshot:
+        """Prend le verrou, copie l'état nécessaire, et retourne un snapshot immuable."""
+        with self.lock:
+            plants_views = tuple(
+                EntityView(
+                    x=p.x, y=p.y,
+                    species_name=p.species.name,
+                    energy=p.energy, alive=p.alive,
+                    growth=p.growth, age=p.age,
+                )
+                for p in self.plants
+            )
+            inds_views = tuple(
+                EntityView(
+                    x=i.x, y=i.y,
+                    species_name=i.species.name,
+                    energy=i.energy, alive=i.alive,
+                    state=i.state, sex=i.sex,
+                    gestation_timer=i.gestation_timer,
+                    age=i.age,
+                )
+                for i in self.individuals
+            )
+            return SimulationSnapshot(
+                tick=self.tick_count,
+                plants=plants_views,
+                individuals=inds_views,
+                species_counts=self.species_counts,
+                terrain_altitude=self.grid.altitude,
+            )
 
     # ── Boucle de simulation ─────────────────────────────────────────────────
 
     def tick(self):
         self.tick_count += 1
+        reg = self._registry
 
-        # ── Plantes ──────────────────────────────────────────────────────────
-        plant_count = len(self.plants)
-        new_plants  = []
-        for plant in self.plants:
-            # On passe le total courant (existants + déjà nés ce tick) pour
-            # éviter que toutes les plantes se reproduisent dans le même tick
-            babies = plant.tick(self.grid, plant_count + len(new_plants))
-            new_plants.extend(babies)
-        self.plants = [p for p in self.plants if p.alive]
-        # Hard cap : par sécurité, respecter max_population même si plant.py laisse passer
-        if new_plants:
-            sp_pc = {}
+        # ── Plantes (1 tick sur 3) ───────────────────────────────────────────
+        if self.tick_count % 3 == 0:
+            plant_count = len(self.plants)
+            new_plants  = []
+            for plant in self.plants:
+                babies = plant.tick(self.grid, plant_count + len(new_plants))
+                new_plants.extend(babies)
+            surviving_plants = []
             for p in self.plants:
-                sp_pc[p.species.name] = sp_pc.get(p.species.name, 0) + 1
-            kept_p = []
-            for baby in new_plants:
-                n = baby.species.name
-                c = sp_pc.get(n, 0)
-                if c < baby.species.max_population:
-                    kept_p.append(baby)
-                    sp_pc[n] = c + 1
-            new_plants = kept_p
-        self.plants.extend(new_plants)
+                if p.alive:
+                    surviving_plants.append(p)
+                else:
+                    reg._species_counts[p.species.name] = max(0, reg._species_counts.get(p.species.name, 0) - 1)
+            self.plants = surviving_plants
+            if new_plants:
+                sp_pc = {}
+                for p in self.plants:
+                    sp_pc[p.species.name] = sp_pc.get(p.species.name, 0) + 1
+                kept_p = []
+                for baby in new_plants:
+                    n = baby.species.name
+                    c = sp_pc.get(n, 0)
+                    if c < baby.species.max_population:
+                        kept_p.append(baby)
+                        sp_pc[n] = c + 1
+                new_plants = kept_p
+            for p in new_plants:
+                reg._species_counts[p.species.name] = reg._species_counts.get(p.species.name, 0) + 1
+            self.plants.extend(new_plants)
 
-        # ── Grilles spatiales (construites une fois par tick) ─────────────────
-        # cell_size = max perception radius → densité optimale
-        max_perception = max(
-            (sp.perception_radius for sp in self.species_list if sp.type != "plant"),
-            default=10.0,
-        )
-        ind_grid   = SpatialGrid(max_perception)
-        plant_grid = SpatialGrid(max_perception)
-        for ind   in self.individuals: ind_grid.insert(ind)
-        for plant in self.plants:      plant_grid.insert(plant)
+        # ── Grilles spatiales ─────────────────────────────────────────────────
+        self._ind_grid.cell_size   = max(reg._max_perception, 1.0)
+        self._plant_grid.cell_size = max(reg._max_perception, 1.0)
+        self._ind_grid.clear()
+        self._plant_grid.clear()
+        for ind   in self.individuals: self._ind_grid.insert(ind)
+        for plant in self.plants:      self._plant_grid.insert(plant)
+        ind_grid   = self._ind_grid
+        plant_grid = self._plant_grid
+
+        # ── Centroïdes de troupeau ────────────────────────────────────────────
+        _hc_acc: dict = {}
+        for ind in self.individuals:
+            if ind.species.herd_cohesion > 0:
+                name = ind.species.name
+                if name not in _hc_acc:
+                    _hc_acc[name] = [0.0, 0.0, 0]
+                _hc_acc[name][0] += ind.x
+                _hc_acc[name][1] += ind.y
+                _hc_acc[name][2] += 1
+        herd_centroids = {
+            name: (acc[0] / acc[2], acc[1] / acc[2])
+            for name, acc in _hc_acc.items()
+        }
 
         # ── Animaux ──────────────────────────────────────────────────────────
         time_of_day     = (self.tick_count % DAY_LENGTH) / DAY_LENGTH
         new_individuals = []
+        self._last_newborns: list = []
         for ind in self.individuals:
-            # Rayon de requête = 3× perception (couvre reproduction 3× + nourriture 1×)
-            r = ind.species.perception_radius * 3.0
-            nearby_inds   = ind_grid.query(ind.x, ind.y, r)
-            nearby_plants = plant_grid.query(ind.x, ind.y, r)
-            babies = ind.tick(self.grid, nearby_plants, nearby_inds, time_of_day)
+            r_perc  = ind.species.perception_radius
+            r_repro = r_perc * 3.0
+            nearby_inds   = ind_grid.query(ind.x, ind.y, r_perc)
+            nearby_plants = plant_grid.query(ind.x, ind.y, r_perc)
+            nearby_repro  = ind_grid.query(ind.x, ind.y, r_repro)
+            babies = ind.tick(self.grid, nearby_plants, nearby_inds, time_of_day,
+                              herd_centroids=herd_centroids,
+                              all_individuals_repro=nearby_repro)
             new_individuals.extend(babies)
 
-        # Enregistrement des morts avant purge
+        surviving_inds = []
         for ind in self.individuals:
-            if not ind.alive and hasattr(ind, "death_cause"):
-                self.death_log.record(ind, self.tick_count)
+            if ind.alive:
+                surviving_inds.append(ind)
+            else:
+                reg._species_counts[ind.species.name] = max(0, reg._species_counts.get(ind.species.name, 0) - 1)
+                if hasattr(ind, "death_cause"):
+                    self.death_log.record(ind, self.tick_count)
+        self.individuals = surviving_inds
 
-        self.individuals = [i for i in self.individuals if i.alive]
-
-        # Respecter max_population par espèce (bug fix : sans ça la pop explose)
         if new_individuals:
             sp_count = {}
             for i in self.individuals:
@@ -150,36 +243,17 @@ class SimulationEngine:
                     sp_count[n] = c + 1
             new_individuals = kept
 
+        for baby in new_individuals:
+            reg._species_counts[baby.species.name] = reg._species_counts.get(baby.species.name, 0) + 1
+        self._last_newborns = new_individuals
         self.individuals.extend(new_individuals)
 
-        # ── Détection d'extinction ────────────────────────────────────────────
-        current_names = {p.species.name for p in self.plants} | \
-                        {i.species.name for i in self.individuals}
-        for sp in self.species_list:
-            if sp.name not in current_names and sp.name not in self._extinct:
-                self._extinct.add(sp.name)
-                self.logger.log_event(self.tick_count, f"EXTINCTION de {sp.name}")
-                self.report.record_event(self.tick_count, "extinction", sp.name)
-                print(f"[EXTINCTION] {sp.name} au tick {self.tick_count}")
+        reg.detect_extinctions(self.tick_count)
 
-        # ── Log + rapport toutes les 500 ticks (~10 s réels à x1) ────────────
         if self.tick_count % 500 == 0:
             self.report.record(self.tick_count, self.plants, self.individuals)
             self.logger.log(self.tick_count, self.plants, self.individuals)
-            counts = {}
-            for p in self.plants:
-                counts[p.species.name] = counts.get(p.species.name, 0) + 1
-            for i in self.individuals:
-                counts[i.species.name] = counts.get(i.species.name, 0) + 1
-            print(f"Tick {self.tick_count} — {counts}")
-
-    # ── Génération de rapport ─────────────────────────────────────────────────
-
-    def generate_report(self):
-        return self.report.generate(
-            self.tick_count, self.plants, self.individuals,
-            self.grid.width, self.grid.height,
-        )
+            print(f"Tick {self.tick_count} — {self.species_counts}")
 
     # ── Reset ─────────────────────────────────────────────────────────────────
 
@@ -194,70 +268,5 @@ class SimulationEngine:
         self.running    = False
         self.individuals = []
         self.plants      = []
-        self._extinct    = set()
-
-        saved_defaults  = dict(self._default_counts)
-        saved_overrides = dict(self._population_overrides)
-        saved_raw       = dict(self._species_raw_params)
-        self.species_list        = []
-        self._default_counts     = {}
-        self._species_raw_params = {}
-
-        for name, raw in saved_raw.items():
-            count = saved_overrides.get(name, saved_defaults.get(name, 20))
-            self.add_species(raw, count=count)
-
-        self._population_overrides = saved_overrides
+        self._registry.reset()
         print("Simulation reinitialisee")
-
-    # ── Snapshots WebSocket ───────────────────────────────────────────────────
-
-    def get_terrain_snapshot(self) -> dict:
-        import numpy as np
-        return {
-            "type":    "terrain",
-            "width":   self.grid.width,
-            "height":  self.grid.height,
-            "altitude": np.round(self.grid.altitude, 2).tolist(),
-            "species": [
-                {
-                    "name":  sp.name,
-                    "color": list(sp.color),
-                    "count": self._population_overrides.get(
-                        sp.name, self._default_counts.get(sp.name, 0)
-                    ),
-                }
-                for sp in self.species_list
-            ],
-        }
-
-    def get_state_snapshot(self) -> dict:
-        time_of_day = (self.tick_count % DAY_LENGTH) / DAY_LENGTH
-        sim_day     = (self.tick_count // DAY_LENGTH) % 365
-        sim_year    = self.tick_count // SIM_YEAR + 1
-        return {
-            "type":        "world_update",
-            "tick":        self.tick_count,
-            "time_of_day": round(time_of_day, 3),
-            "sim_day":     sim_day,
-            "sim_year":    sim_year,
-            "entities": [
-                {
-                    "x":       round(p.x, 1),
-                    "y":       round(p.y, 1),
-                    "type":    "plant",
-                    "species": p.species.name,
-                    "color":   list(p.species.color),
-                    "growth":  round(p.growth, 2),
-                } for p in self.plants
-            ] + [
-                {
-                    "x":       round(i.x, 1),
-                    "y":       round(i.y, 1),
-                    "type":    i.species.type,
-                    "species": i.species.name,
-                    "color":   list(i.species.color),
-                    "state":   i.state,
-                } for i in self.individuals
-            ],
-        }

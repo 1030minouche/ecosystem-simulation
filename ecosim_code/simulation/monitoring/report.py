@@ -1,7 +1,11 @@
 import json
 import math
-import os
+import pathlib
 from datetime import datetime
+from simulation.utils.counting import count_by_species
+
+_BASE_DIR    = pathlib.Path(__file__).parent.parent
+_REPORTS_DIR = _BASE_DIR / "reports"
 
 class SimulationReport:
     def __init__(self):
@@ -116,11 +120,7 @@ class SimulationReport:
         end_time = datetime.now()
         duration = (end_time - self.start_time).seconds
 
-        final_populations = {}
-        for p in plants:
-            final_populations[p.species.name] = final_populations.get(p.species.name, 0) + 1
-        for i in individuals:
-            final_populations[i.species.name] = final_populations.get(i.species.name, 0) + 1
+        final_populations = count_by_species(list(plants) + list(individuals))
 
         # Indice de Shannon (biodiversité)
         total = sum(final_populations.values())
@@ -153,8 +153,8 @@ class SimulationReport:
             "population_history": self.history,
         }
 
-        os.makedirs("reports", exist_ok=True)
-        base     = f"reports/rapport_{self.start_time.strftime('%Y%m%d_%H%M%S')}"
+        _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        base     = str(_REPORTS_DIR / f"rapport_{self.start_time.strftime('%Y%m%d_%H%M%S')}")
         filename = base + ".json"
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, ensure_ascii=False)

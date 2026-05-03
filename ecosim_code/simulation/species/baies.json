@@ -1,5 +1,5 @@
 {
-  "count": 300,
+  "count": 400,
   "params": {
     "name": "Baies",
     "type": "plant",
@@ -30,12 +30,12 @@
     "perception_radius": 0.0,
     "perception_radius_std": 0.0,
     "food_sources": [],
-    "growth_rate": 1.8e-05,
-    "growth_rate_std": 3e-06,
+    "growth_rate": 0.00144,
+    "growth_rate_std": 3e-05,
     "dispersal_radius": 4,
     "activity_pattern": "diurnal",
     "can_swim": false,
-    "reproduction_cooldown_length": 7200,
+    "reproduction_cooldown_length": 3600,
     "reproduction_cooldown_length_std": 600,
     "litter_size_min": 1,
     "litter_size_max": 2,

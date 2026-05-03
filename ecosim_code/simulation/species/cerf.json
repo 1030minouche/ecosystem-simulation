@@ -1,5 +1,5 @@
 {
-  "count": 80,
+  "count": 50,
   "params": {
     "name": "Cerf",
     "type": "herbivore",
@@ -32,7 +32,8 @@
     "food_sources": [
       "Herbe",
       "Baies",
-      "Fougere"
+      "Fougere",
+      "Champignon"
     ],
     "growth_rate": 0.0,
     "growth_rate_std": 0.0,

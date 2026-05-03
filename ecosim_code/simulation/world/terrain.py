@@ -17,11 +17,41 @@ _BIOME_ALTITUDES = {
     "snow":   0.92,
 }
 
+# Palette de biomes — source unique pour le viewer et l'éditeur de terrain.
+# Chaque entrée : (seuil_altitude_min, (R, G, B))
+BIOME_PALETTE: list[tuple[float, tuple[int, int, int]]] = [
+    (0.00, ( 20,  80, 160)),   # eau profonde
+    (0.28, ( 30, 110, 185)),   # eau
+    (0.30, (200, 175,  95)),   # sable
+    (0.40, (130, 190,  75)),   # plaine
+    (0.60, ( 60, 122,  51)),   # forêt
+    (0.75, (105, 100,  95)),   # roche/montagne
+    (0.85, (230, 230, 240)),   # neige
+]
+
+
+def altitude_to_rgb(alt: float) -> tuple[int, int, int]:
+    """Retourne la couleur RGB pour une altitude normalisée dans [0, 1]."""
+    color = BIOME_PALETTE[0][1]
+    for threshold, c in BIOME_PALETTE:
+        if alt >= threshold:
+            color = c
+    return color
+
 # ── Helpers internes ──────────────────────────────────────────────────────────
 
 def _pnoise(x: int, y: int, scale: float, octaves: int, seed: int) -> float:
     """Bruit de Perlin normalisé dans [0, 1]."""
     return (pnoise2(x / scale, y / scale, octaves=octaves, base=seed) + 1.0) * 0.5
+
+
+def _pnoise_grid(grid: "Grid", scale: float, octaves: int, seed: int) -> np.ndarray:
+    """Génère un tableau altitude (H×W) via bruit de Perlin vectorisé."""
+    xs = np.arange(grid.width)
+    ys = np.arange(grid.height)
+    xg, yg = np.meshgrid(xs, ys)   # shape (H, W)
+    vfunc = np.vectorize(lambda x, y: _pnoise(int(x), int(y), scale, octaves, seed))
+    return vfunc(xg, yg)
 
 
 def _disk_cells(cx: int, cy: int, radius: int, width: int, height: int):
@@ -35,34 +65,36 @@ def _disk_cells(cx: int, cy: int, radius: int, width: int, height: int):
 
 
 def _apply_soil_at(grid: Grid, x: int, y: int) -> None:
-    """Met à jour la classification du sol et les conditions environnementales d'une cellule."""
-    alt  = float(grid.altitude[y][x])
-    cell = grid.cells[y][x]
+    """Met à jour les tableaux numpy de sol et conditions pour une cellule."""
+    alt = float(grid.altitude[y][x])
 
-    # Terrain
-    cell.altitude = alt
-
-    # Sol
+    # Sol (source de vérité : grid.soil_type)
     if alt < _WATER_THRESHOLD:
-        cell.soil_type   = "water"
-        cell.water_depth = _WATER_THRESHOLD - alt
+        grid.soil_type[y][x]   = "water"
+        grid.water_depth[y][x] = _WATER_THRESHOLD - alt
     elif alt > _ROCK_THRESHOLD:
-        cell.soil_type   = "rock"
-        cell.water_depth = 0.0
+        grid.soil_type[y][x]   = "rock"
+        grid.water_depth[y][x] = 0.0
     else:
-        cell.soil_type   = "clay"
-        cell.water_depth = 0.0
+        grid.soil_type[y][x]   = "clay"
+        grid.water_depth[y][x] = 0.0
 
     # Humidité : inverse de l'altitude (eau = 1.0, sommet = 0.0)
-    hum = 1.0 - alt
-    grid.humidity[y][x] = hum
-    cell.humidity = hum
+    grid.humidity[y][x] = 1.0 - alt
 
     # Température : décroît avec l'altitude.
     # Formule calibrée pour que les espèces survivent dans leur plage altitudinale :
     #   alt=0.30 (plage) ≈ 17.5 °C  |  alt=0.50 (plaine) ≈ 12.5 °C
     #   alt=0.75 (forêt haute) ≈ 6.25 °C  |  alt=0.85 (roche) ≈ 3.75 °C
-    cell.temperature = 15.0 + (0.4 - alt) * 25.0
+    grid.temperature[y][x] = 15.0 + (0.4 - alt) * 25.0
+
+    # Synchronisation de l'objet Cell legacy (éditeur de terrain)
+    cell = grid.cells[y][x]
+    cell.altitude    = alt
+    cell.soil_type   = grid.soil_type[y][x]
+    cell.humidity    = float(grid.humidity[y][x])
+    cell.temperature = float(grid.temperature[y][x])
+    cell.water_depth = float(grid.water_depth[y][x])
 
 
 def _classify_all(grid: Grid) -> None:
@@ -87,41 +119,39 @@ def generate_terrain(grid: Grid, seed: int = 42, preset: str = "default") -> Non
 
 
 def _generate_default(grid: Grid, seed: int) -> None:
-    for y in range(grid.height):
-        for x in range(grid.width):
-            grid.altitude[y][x] = _pnoise(x, y, 50.0, 6, seed)
+    grid.altitude[:] = _pnoise_grid(grid, 50.0, 6, seed)
 
 
 def _generate_island(grid: Grid, seed: int) -> None:
-    cx, cy  = grid.width / 2.0, grid.height / 2.0
-    max_d   = min(grid.width, grid.height) / 2.0
-    for y in range(grid.height):
-        for x in range(grid.width):
-            noise    = _pnoise(x, y, 38.0, 6, seed)
-            gradient = max(0.0, 1.0 - (((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 / max_d) ** 1.4)
-            grid.altitude[y][x] = max(0.0, min(1.0, noise * 0.55 + gradient * 0.65 - 0.18))
+    cx, cy = grid.width / 2.0, grid.height / 2.0
+    max_d  = min(grid.width, grid.height) / 2.0
+    xs = np.arange(grid.width)
+    ys = np.arange(grid.height)
+    xg, yg  = np.meshgrid(xs, ys)
+    noise    = _pnoise_grid(grid, 38.0, 6, seed)
+    dist     = np.sqrt((xg - cx) ** 2 + (yg - cy) ** 2)
+    gradient = np.maximum(0.0, 1.0 - (dist / max_d) ** 1.4)
+    grid.altitude[:] = np.clip(noise * 0.55 + gradient * 0.65 - 0.18, 0.0, 1.0)
 
 
 def _generate_archipelago(grid: Grid, seed: int) -> None:
-    cx, cy  = grid.width / 2.0, grid.height / 2.0
-    max_d   = min(grid.width, grid.height) / 2.0
-    for y in range(grid.height):
-        for x in range(grid.width):
-            noise = _pnoise(x, y, 18.0, 5, seed)
-            edge  = max(0.0, 1.0 - (((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 / max_d) ** 2)
-            grid.altitude[y][x] = max(0.0, min(1.0, noise * 0.85 * edge - 0.12))
+    cx, cy = grid.width / 2.0, grid.height / 2.0
+    max_d  = min(grid.width, grid.height) / 2.0
+    xs = np.arange(grid.width)
+    ys = np.arange(grid.height)
+    xg, yg = np.meshgrid(xs, ys)
+    noise   = _pnoise_grid(grid, 18.0, 5, seed)
+    dist    = np.sqrt((xg - cx) ** 2 + (yg - cy) ** 2)
+    edge    = np.maximum(0.0, 1.0 - (dist / max_d) ** 2)
+    grid.altitude[:] = np.clip(noise * 0.85 * edge - 0.12, 0.0, 1.0)
 
 
 def _generate_mountain(grid: Grid, seed: int) -> None:
-    for y in range(grid.height):
-        for x in range(grid.width):
-            grid.altitude[y][x] = _pnoise(x, y, 28.0, 8, seed) ** 0.65
+    grid.altitude[:] = _pnoise_grid(grid, 28.0, 8, seed) ** 0.65
 
 
 def _generate_continent(grid: Grid, seed: int) -> None:
-    for y in range(grid.height):
-        for x in range(grid.width):
-            grid.altitude[y][x] = min(1.0, _pnoise(x, y, 65.0, 5, seed) * 0.65 + 0.22)
+    grid.altitude[:] = np.minimum(1.0, _pnoise_grid(grid, 65.0, 5, seed) * 0.65 + 0.22)
 
 
 # ── Outils d'édition ─────────────────────────────────────────────────────────

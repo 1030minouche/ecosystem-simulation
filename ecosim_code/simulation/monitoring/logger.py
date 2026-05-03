@@ -1,10 +1,15 @@
-import os
+import pathlib
 from datetime import datetime
+from simulation.utils.counting import count_by_species
+
+_BASE_DIR = pathlib.Path(__file__).parent.parent
+_LOGS_DIR = _BASE_DIR / "logs"
+
 
 class SimulationLogger:
     def __init__(self):
-        os.makedirs("logs", exist_ok=True)
-        filename = f"logs/sim_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        _LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        filename = str(_LOGS_DIR / f"sim_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
         self.file = open(filename, "w", encoding="utf-8")
         self.filename = filename
         self._write_header()
@@ -18,11 +23,7 @@ class SimulationLogger:
 
     def log(self, tick: int, plants: list, individuals: list):
         """Appelé périodiquement (pas à chaque tick)."""
-        counts = {}
-        for p in plants:
-            counts[p.species.name] = counts.get(p.species.name, 0) + 1
-        for i in individuals:
-            counts[i.species.name] = counts.get(i.species.name, 0) + 1
+        counts = count_by_species(list(plants) + list(individuals))
         total = sum(counts.values())
         line = f"[Tick {tick:>6}] total={total:>5} │ "
         line += "  ".join(f"{name}: {count:>4}" for name, count in sorted(counts.items()))

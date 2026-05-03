@@ -7,9 +7,10 @@ Fonctionne pour les herbivores (cibles : plantes), les carnivores
 """
 
 import math
-import random
 
 from entities.activity import TICKS_PER_SECOND, _is_resting
+from entities.rng import rng
+from entities.death import mark_dead
 
 
 class FeedingMixin:
@@ -18,7 +19,7 @@ class FeedingMixin:
         target    = None
         min_dist2 = self.species.perception_radius ** 2
 
-        if self.species.type in ("herbivore", "omnivore"):
+        if self.species.can_eat_plants():
             for plant in all_plants:
                 if not plant.alive or plant.species.name not in self.species.food_sources:
                     continue
@@ -29,15 +30,15 @@ class FeedingMixin:
                     min_dist2 = d2
                     target = plant
 
-        if self.species.type in ("carnivore", "omnivore", "volant"):
+        if self.species.can_eat_animals():
             for other in all_individuals:
                 if not other.alive or other is self:
                     continue
                 if other.species.name not in self.species.food_sources:
                     continue
                 # Un volant en vol ne peut être attrapé que par un autre volant
-                if other.species.type == "volant" and other.state == "en_vol":
-                    if self.species.type != "volant":
+                if other.species.is_flying() and other.state == "en_vol":
+                    if not self.species.is_flying():
                         continue
                 dx = other.x - self.x
                 dy = other.y - self.y
@@ -68,22 +69,20 @@ class FeedingMixin:
             dhx = target.x - target.home_x
             dhy = target.y - target.home_y
             if dhx * dhx + dhy * dhy <= target.species.territory_radius ** 2:
-                if random.random() < target.species.home_protection:
+                if rng.random() < target.species.home_protection:
                     caught = False
 
         if not caught:
             return
 
-        # ── Mort de la proie — métadonnées pour le DeathLogger ────────────────
-        cx, cy = int(target.x), int(target.y)
-        on_water = (0 <= cx < grid.width and 0 <= cy < grid.height
-                    and grid.cells[cy][cx].soil_type == "water")
-        target.death_cause    = "predation"
-        target.death_tod      = time_of_day
-        target.death_is_night = _is_resting(time_of_day, target.species.activity_pattern)
-        target.death_on_water = on_water
-        target.death_state    = getattr(target, "state", None)
-        target.alive = False
-
-        self.energy = min(self.species.energy_start,
-                          self.energy + self.species.energy_from_food)
+        # ── Consommation incrémentale ─────────────────────────────────────────
+        # Une morsure prélève bite_size × energy_start de la cible.
+        # La cible peut survivre et nourrir plusieurs prédateurs.
+        tgt_start = max(target.species.energy_start, 1e-6)
+        bite = min(target.energy, self.species.bite_size * tgt_start)
+        gain = bite * (self.species.energy_from_food / tgt_start)
+        target.energy -= bite
+        self.energy = min(self.species.energy_start, self.energy + gain)
+        if target.energy <= 0:
+            mark_dead(target, "predation", grid, time_of_day,
+                      is_night=_is_resting(time_of_day, target.species.activity_pattern))

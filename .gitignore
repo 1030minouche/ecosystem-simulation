@@ -17,3 +17,10 @@ ecosim_code/simulation/reports/
 ecosim_code/TODO.txt
 .claude/settings.local.json
 analyse_code.md
+reprise.txt
+optimisation.md
+fix_ticks.md
+fix_bursts.md
+REFACTORING_INSTRUCTIONS.md
+ecosim_code/simulation/runs/sim.db
+ecosim_code/simulation/runs/

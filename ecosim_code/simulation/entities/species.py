@@ -1,6 +1,15 @@
 from dataclasses import dataclass, field, fields as dc_fields
+from enum import Enum
 from typing import List
-import random
+from entities.rng import rng
+
+
+class SpeciesType(str, Enum):
+    PLANT      = "plant"
+    HERBIVORE  = "herbivore"
+    CARNIVORE  = "carnivore"
+    OMNIVORE   = "omnivore"
+    FLYING     = "volant"
 
 # Paramètres dont la valeur est tirée selon N(µ, σ) au démarrage de chaque simulation
 _VARIABLE_FLOAT = {
@@ -24,37 +33,12 @@ def sample_params(params: dict) -> dict:
             continue
         std = params.get(f"{key}_std", 0.0) or 0.0
         if std > 0 and key in _VARIABLE_FLOAT:
-            result[key] = max(0.0, random.gauss(val, std))
+            result[key] = max(0.0, rng.gauss(val, std))
         elif std > 0 and key in _VARIABLE_INT:
-            result[key] = max(0, round(random.gauss(val, std)))
+            result[key] = max(0, round(rng.gauss(val, std)))
         else:
             result[key] = val
     return result
-
-def blend_species(s1: "Species", s2: "Species", mutation_rate: float = 0.0) -> "Species":
-    """Crée un Species dont les params variables sont la moyenne de s1 et s2,
-    puis applique une petite perturbation gaussienne selon mutation_rate
-    (écart-type = mutation_rate × valeur moyenne, 0 = pas de mutation).
-    Les params non-variables (conditions, couleur, etc.) sont hérités de s1.
-    """
-    kwargs = {}
-    for f in dc_fields(s1):
-        v1 = getattr(s1, f.name)
-        v2 = getattr(s2, f.name)
-        if f.name in _VARIABLE_FLOAT:
-            mean = (v1 + v2) / 2.0
-            if mutation_rate > 0:
-                mean = max(0.0, random.gauss(mean, abs(mean) * mutation_rate))
-            kwargs[f.name] = mean
-        elif f.name in _VARIABLE_INT:
-            mean = (v1 + v2) / 2.0
-            if mutation_rate > 0:
-                mean = max(0.0, random.gauss(mean, abs(mean) * mutation_rate))
-            kwargs[f.name] = max(0, round(mean))
-        else:
-            kwargs[f.name] = v1
-    return Species(**kwargs)
-
 
 @dataclass
 class Species:
@@ -82,6 +66,7 @@ class Species:
     energy_start: float = 100.0
     energy_consumption: float = 1.0  # par tick
     energy_from_food: float = 50.0
+    bite_size: float = 0.35          # fraction de energy_start de la cible prélevée par morsure
 
     # Comportement (animaux)
     speed: float = 1.0
@@ -99,10 +84,31 @@ class Species:
     #               repos en pleine nuit et en pleine journée
     activity_pattern: str = "diurnal"
 
+    def __post_init__(self):
+        # Convertit food_sources en frozenset pour des tests `in` en O(1)
+        # au lieu de O(k) avec une liste.
+        if not isinstance(self.food_sources, frozenset):
+            self.food_sources = frozenset(self.food_sources)
+
     # Compat. ascendante : nocturnal est dérivé de activity_pattern
     @property
     def nocturnal(self) -> bool:
         return self.activity_pattern == "nocturnal"
+
+    def is_flying(self) -> bool:
+        return self.type == SpeciesType.FLYING
+
+    def is_plant(self) -> bool:
+        return self.type == SpeciesType.PLANT
+
+    def is_predator(self) -> bool:
+        return self.type in (SpeciesType.CARNIVORE, SpeciesType.OMNIVORE)
+
+    def can_eat_plants(self) -> bool:
+        return self.type in (SpeciesType.HERBIVORE, SpeciesType.OMNIVORE)
+
+    def can_eat_animals(self) -> bool:
+        return self.type in (SpeciesType.CARNIVORE, SpeciesType.OMNIVORE, SpeciesType.FLYING)
 
     # Capacités physiques
     can_swim: bool = False
@@ -119,16 +125,46 @@ class Species:
 
     # Comportement de troupeau
     herd_cohesion: float = 0.0               # 0 = solitaire, 1 = colle au groupe
+                                             # lors du wander, biaise la cible vers le centroïde
+                                             # des congénères proches (rayon = 2.5 × perception)
 
     # Génétique
     mutation_rate: float = 0.0               # écart-type relatif appliqué à chaque param
                                              # variable lors de la reproduction
                                              # (ex: 0.05 → ±5% de chaque valeur moyenne)
-                                             # lors du wander, biaise la cible vers le centroïde
-                                             # des congénères proches (rayon = 2.5 × perception)
 
     # Territoire / habitat
     territory_radius: float = 0.0            # rayon du territoire autour du lieu de naissance
                                              # (0 = pas de territoire)
     home_protection: float = 0.0             # probabilité d'échapper à un prédateur quand
                                              # l'animal est dans son territoire (0-1)
+
+
+# Cache des champs du dataclass Species — calculé une seule fois au chargement du module.
+# Évite d'appeler dc_fields() (introspection) à chaque naissance dans blend_species.
+_SPECIES_FIELDS = dc_fields(Species)
+
+
+def blend_species(s1: "Species", s2: "Species", mutation_rate: float = 0.0) -> "Species":
+    """Crée un Species dont les params variables sont la moyenne de s1 et s2,
+    puis applique une petite perturbation gaussienne selon mutation_rate
+    (écart-type = mutation_rate × valeur moyenne, 0 = pas de mutation).
+    Les params non-variables (conditions, couleur, etc.) sont hérités de s1.
+    """
+    kwargs = {}
+    for f in _SPECIES_FIELDS:
+        v1 = getattr(s1, f.name)
+        v2 = getattr(s2, f.name)
+        if f.name in _VARIABLE_FLOAT:
+            mean = (v1 + v2) / 2.0
+            if mutation_rate > 0:
+                mean = max(0.0, rng.gauss(mean, abs(mean) * mutation_rate))
+            kwargs[f.name] = mean
+        elif f.name in _VARIABLE_INT:
+            mean = (v1 + v2) / 2.0
+            if mutation_rate > 0:
+                mean = max(0.0, rng.gauss(mean, abs(mean) * mutation_rate))
+            kwargs[f.name] = max(0, round(mean))
+        else:
+            kwargs[f.name] = v1
+    return Species(**kwargs)
