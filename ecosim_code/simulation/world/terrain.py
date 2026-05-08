@@ -88,13 +88,6 @@ def _apply_soil_at(grid: Grid, x: int, y: int) -> None:
     #   alt=0.75 (forêt haute) ≈ 6.25 °C  |  alt=0.85 (roche) ≈ 3.75 °C
     grid.temperature[y][x] = 15.0 + (0.4 - alt) * 25.0
 
-    # Synchronisation de l'objet Cell legacy (éditeur de terrain)
-    cell = grid.cells[y][x]
-    cell.altitude    = alt
-    cell.soil_type   = grid.soil_type[y][x]
-    cell.humidity    = float(grid.humidity[y][x])
-    cell.temperature = float(grid.temperature[y][x])
-    cell.water_depth = float(grid.water_depth[y][x])
 
 
 def _classify_all(grid: Grid) -> None:

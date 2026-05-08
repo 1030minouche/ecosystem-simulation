@@ -248,12 +248,33 @@ class SimulationEngine:
         self._last_newborns = new_individuals
         self.individuals.extend(new_individuals)
 
+        self._tick_diseases()
+
         reg.detect_extinctions(self.tick_count)
 
         if self.tick_count % 500 == 0:
             self.report.record(self.tick_count, self.plants, self.individuals)
             self.logger.log(self.tick_count, self.plants, self.individuals)
             print(f"Tick {self.tick_count} — {self.species_counts}")
+
+    # ── Maladies ─────────────────────────────────────────────────────────────
+
+    def _tick_diseases(self) -> None:
+        """Propage les maladies entre individus proches."""
+        from entities.disease import DISEASE_REGISTRY, try_infect
+        if not DISEASE_REGISTRY:
+            return
+        infectious = [i for i in self.individuals if i.alive and i.is_infectious]
+        if not infectious:
+            return
+        for source in infectious:
+            for spec in DISEASE_REGISTRY.values():
+                neighbors = self._ind_grid.query_radius(
+                    source.x, source.y, spec.transmission_radius
+                )
+                for target in neighbors:
+                    if target is not source and target.alive:
+                        try_infect(source, target, spec)
 
     # ── Reset ─────────────────────────────────────────────────────────────────
 

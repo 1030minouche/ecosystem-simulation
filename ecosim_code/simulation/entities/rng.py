@@ -37,5 +37,9 @@ class _RNGWrapper:
     def gauss(self, mu: float, sigma: float) -> float:
         return float(self._g.normal(mu, sigma))
 
+    def shuffle(self, lst: list) -> None:
+        arr = self._g.permuted(lst)
+        lst[:] = list(arr)
+
 
 rng = _RNGWrapper()

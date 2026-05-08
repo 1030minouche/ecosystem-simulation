@@ -77,7 +77,7 @@ class TerrainEditorGUI:
 
         # Sauvegarde pour Annuler
         self._orig_alt   = grid.altitude.copy()
-        self._orig_soil  = [[grid.cells[y][x].soil_type
+        self._orig_soil  = [[str(grid.soil_type[y][x])
                              for x in range(grid.width)]
                             for y in range(grid.height)]
 
@@ -345,7 +345,7 @@ class TerrainEditorGUI:
         np.copyto(self.grid.altitude, self._orig_alt)
         for y in range(self.grid.height):
             for x in range(self.grid.width):
-                self.grid.cells[y][x].soil_type = self._orig_soil[y][x]
+                self.grid.soil_type[y][x] = self._orig_soil[y][x]
         self._on_full_terrain()
         self._confirmed = False
         self._root.destroy()

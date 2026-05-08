@@ -25,6 +25,7 @@ from entities.feeding import FeedingMixin
 from entities.reproduction import ReproductionMixin
 from entities.death import mark_dead
 from entities.rng import rng
+from entities.genetics import Genome
 
 
 @dataclass
@@ -46,6 +47,29 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
 
     # Généalogie : ID Python de la mère (-1 = fondateur, spawn initial)
     parent_id: int = -1
+
+    # Maladies — état épidémiologique par pathogène
+    disease_states: dict = field(default_factory=dict)
+
+    # ── Génome ────────────────────────────────────────────────────────────────
+
+    def __post_init__(self):
+        self.genome: Genome = Genome.random()
+        self._effective_params: dict = {}
+        self._refresh_effective_params()
+
+    def _refresh_effective_params(self) -> None:
+        base = {
+            "max_speed":          self.species.speed,
+            "max_energy":         self.species.energy_start,
+            "energy_per_food":    self.species.energy_from_food,
+            "reproduction_rate":  self.species.reproduction_rate,
+            "perception_radius":  self.species.perception_radius,
+            "aggression":         getattr(self.species, "aggression", 0.5),
+            "disease_resistance": getattr(self.species, "disease_resistance", 0.5),
+            "longevity":          getattr(self.species, "max_age", 5000),
+        }
+        self._effective_params = self.genome.apply_to_params(base)
 
     # ── Boucle de vie ─────────────────────────────────────────────────────────
 
@@ -94,6 +118,22 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
             self._annotate_death(grid, resting, time_of_day)
             return newborns
 
+        # ── Maladies ──────────────────────────────────────────────────────────
+        if self.disease_states:
+            from entities.disease import DISEASE_REGISTRY
+            dead_from_disease = False
+            for ds in list(self.disease_states.values()):
+                spec = DISEASE_REGISTRY.get(ds.disease_name)
+                if spec:
+                    result = ds.tick(self, spec)
+                    if result == "dead":
+                        dead_from_disease = True
+                        break
+            if dead_from_disease:
+                mark_dead(self, "disease", grid, time_of_day,
+                          is_night=_is_resting(time_of_day, self.species.activity_pattern))
+                return newborns
+
         predator, n_predators = self._nearest_predator(all_individuals, time_of_day)
 
         if resting and predator is None:
@@ -130,6 +170,10 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
             self._avoid_water(grid)
 
         return newborns
+
+    @property
+    def is_infectious(self) -> bool:
+        return any(ds.status == "infected" for ds in self.disease_states.values())
 
     # ── Machine à états ───────────────────────────────────────────────────────
 

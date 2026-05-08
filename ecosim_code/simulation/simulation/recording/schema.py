@@ -23,6 +23,10 @@ class EntitySnapshot:
     age: int
     alive: bool
     state: str
+    sex: str = "?"
+    genome_json: str = ""
+    reproduction_cooldown: int = 0
+    gestation_timer: int = 0
 
 
 @dataclass(frozen=True)
@@ -45,10 +49,23 @@ class WorldSnapshot:
     @classmethod
     def from_blob(cls, blob: bytes) -> "WorldSnapshot":
         data = json.loads(gzip.decompress(blob))
+
+        def _es(d: dict) -> EntitySnapshot:
+            return EntitySnapshot(
+                id=d["id"], species=d["species"],
+                x=d["x"], y=d["y"],
+                energy=d["energy"], age=d["age"],
+                alive=d["alive"], state=d["state"],
+                sex=d.get("sex", "?"),
+                genome_json=d.get("genome_json", ""),
+                reproduction_cooldown=d.get("reproduction_cooldown", 0),
+                gestation_timer=d.get("gestation_timer", 0),
+            )
+
         return cls(
             tick=data["tick"],
-            plants=tuple(EntitySnapshot(**e) for e in data["plants"]),
-            individuals=tuple(EntitySnapshot(**e) for e in data["individuals"]),
+            plants=tuple(_es(e) for e in data["plants"]),
+            individuals=tuple(_es(e) for e in data["individuals"]),
             species_counts=data["species_counts"],
         )
 

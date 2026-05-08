@@ -1,0 +1,12 @@
+{
+  "name": "myxomatosis",
+  "transmission_rate": 0.04,
+  "transmission_radius": 1.5,
+  "incubation_ticks": 300,
+  "infectious_ticks": 600,
+  "energy_drain": 0.8,
+  "speed_penalty": 0.6,
+  "mortality_chance": 0.003,
+  "immunity_ticks": 3600,
+  "affects_species": ["lapin"]
+}

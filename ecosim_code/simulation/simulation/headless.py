@@ -117,6 +117,14 @@ def _load_species_from_dir(engine, path: str) -> None:
         engine.add_species(params, count=spec.get("count", 20))
 
 
+def load_diseases(diseases_dir: "Path") -> None:
+    """Charge les fichiers JSON de maladies et peuple DISEASE_REGISTRY."""
+    from entities.disease import DISEASE_REGISTRY, DiseaseSpec
+    for p in diseases_dir.glob("*.json"):
+        spec = DiseaseSpec.from_dict(json.loads(p.read_text(encoding="utf-8")))
+        DISEASE_REGISTRY[spec.name] = spec
+
+
 def _print_summary(summary: "RunSummary") -> None:
     print("\n" + "=" * 55)
     print(f"  Simulation terminée")

@@ -13,6 +13,22 @@ import math
 from entities.activity import TICKS_PER_SECOND
 from entities.rng import rng
 from entities.species import blend_species
+from entities.genetics import Genome
+
+
+def _inherit_genome(parent, offspring, partner=None) -> None:
+    """Donne à l'offspring un génome hérité des deux parents (ou du parent seul)."""
+    if partner is None:
+        partner = getattr(parent, "_gestation_partner", None)
+    if partner is not None and hasattr(partner, "genome"):
+        offspring.genome = Genome.from_parents(
+            parent.genome, partner.genome, parent.species.mutation_rate
+        )
+    else:
+        offspring.genome = Genome.from_parents(
+            parent.genome, parent.genome, parent.species.mutation_rate
+        )
+    offspring._refresh_effective_params()
 
 
 def _spawn_offspring(parent, grid, species, energy_factor: float = 0.5,
@@ -42,8 +58,11 @@ class ReproductionMixin:
 
     def _deliver(self, grid) -> list:
         baby_sp = self.gestation_species or self.species
-        babies = [_spawn_offspring(self, grid, baby_sp, energy_factor=0.5, spread=2.0)
-                  for _ in range(self.gestation_count)]
+        babies = []
+        for _ in range(self.gestation_count):
+            baby = _spawn_offspring(self, grid, baby_sp, energy_factor=0.5, spread=2.0)
+            _inherit_genome(self, baby)
+            babies.append(baby)
         self.gestation_count   = 0
         self.gestation_species = None
         return babies
@@ -112,16 +131,20 @@ class ReproductionMixin:
                                 mutation_rate=self.species.mutation_rate)
 
         if self.species.gestation_ticks > 0:
-            # Gestation différée : les bébés naîtront plus tard
-            self.gestation_timer   = self.species.gestation_ticks
-            self.gestation_count   = litter
-            self.gestation_species = baby_sp
+            # Gestation différée
+            self._gestation_partner = nearest_partner  # mémorisé pour héritage
+            self.gestation_timer    = self.species.gestation_ticks
+            self.gestation_count    = litter
+            self.gestation_species  = baby_sp
             nearest_partner.reproduction_cooldown = self.species.gestation_ticks
             return []
         else:
             # Naissance instantanée
-            newborns = [_spawn_offspring(self, grid, baby_sp, energy_factor=0.6, spread=1.0)
-                        for _ in range(litter)]
+            newborns = []
+            for _ in range(litter):
+                baby = _spawn_offspring(self, grid, baby_sp, energy_factor=0.6, spread=1.0)
+                _inherit_genome(self, baby, partner=nearest_partner)
+                newborns.append(baby)
             self.reproduction_cooldown            = self.species.reproduction_cooldown_length
             nearest_partner.reproduction_cooldown = self.species.reproduction_cooldown_length
             return newborns

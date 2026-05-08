@@ -139,6 +139,9 @@ class Species:
     home_protection: float = 0.0             # probabilité d'échapper à un prédateur quand
                                              # l'animal est dans son territoire (0-1)
 
+    # Maladies
+    disease_resistance: float = 0.5          # résistance aux maladies (0=aucune, 1=immunisé)
+
 
 # Cache des champs du dataclass Species — calculé une seule fois au chargement du module.
 # Évite d'appeler dc_fields() (introspection) à chaque naissance dans blend_species.

@@ -8,12 +8,10 @@ from world.grid import Grid
 
 def _make_grid(width=40, height=40) -> Grid:
     g = Grid(width, height)
-    for row in g.cells:
-        for cell in row:
-            cell.soil_type = "clay"
-            cell.temperature = 20.0
-            cell.humidity = 0.5
-            cell.altitude = 0.5
+    g.soil_type[:] = "clay"
+    g.temperature[:] = 20.0
+    g.humidity[:] = 0.5
+    g.altitude[:] = 0.5
     return g
 
 

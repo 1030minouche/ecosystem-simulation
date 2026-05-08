@@ -34,3 +34,9 @@ class SpatialGrid:
                 if bucket:
                     result.extend(bucket)
         return result
+
+    def query_radius(self, x: float, y: float, radius: float) -> list:
+        """Comme query() mais filtre exactement dans le cercle (pas la bounding box)."""
+        candidates = self.query(x, y, radius)
+        r2 = radius * radius
+        return [e for e in candidates if (e.x - x) ** 2 + (e.y - y) ** 2 <= r2]

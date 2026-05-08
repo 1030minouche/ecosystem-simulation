@@ -29,17 +29,24 @@ if TYPE_CHECKING:
 
 class Recorder:
     def __init__(self, path: Path, keyframe_every: int = 500,
-                 frame_renderer=None) -> None:
+                 frame_renderer=None, append: bool = False) -> None:
         """
         frame_renderer : callable(engine, tick) -> bytes | None
             Si fourni, appelé après chaque keyframe pour stocker un PNG pré-rendu.
+        append : si True, on ne recrée pas les tables et on repart du dernier tick connu.
         """
         self.path            = path
         self.keyframe_every  = keyframe_every
         self._frame_renderer = frame_renderer
         self._last_keyframe  = -1
         self._conn           = sqlite3.connect(str(path))
-        self._init_db()
+        if append:
+            row = self._conn.execute(
+                "SELECT MAX(tick) FROM keyframes"
+            ).fetchone()
+            self._last_keyframe = row[0] if row[0] is not None else -1
+        else:
+            self._init_db()
 
     # ── Init ─────────────────────────────────────────────────────────────────
 
@@ -93,6 +100,18 @@ class Recorder:
         )
         self._conn.commit()
 
+    def write_species_params(self, species_list) -> None:
+        """Sérialise tous les paramètres d'espèces en JSON dans meta."""
+        import dataclasses
+        data = []
+        for sp in species_list:
+            d = dataclasses.asdict(sp)
+            # frozenset n'est pas sérialisable
+            if "food_sources" in d:
+                d["food_sources"] = list(d["food_sources"])
+            data.append(d)
+        self.write_meta("species_params", json.dumps(data))
+
     # ── Callbacks ─────────────────────────────────────────────────────────────
 
     def on_tick_end(self, engine: "SimulationEngine") -> None:
@@ -140,6 +159,10 @@ class Recorder:
                 x=round(i.x, 2), y=round(i.y, 2),
                 energy=round(i.energy, 2), age=i.age,
                 alive=i.alive, state=getattr(i, "state", "wander"),
+                sex=getattr(i, "sex", "?"),
+                genome_json=getattr(i, "genome", None) and i.genome.to_json() or "",
+                reproduction_cooldown=getattr(i, "reproduction_cooldown", 0),
+                gestation_timer=getattr(i, "gestation_timer", 0),
             )
             for i in engine.individuals
         )
