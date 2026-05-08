@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import glob
 import json
+import math
 import os
 import threading
 import time
@@ -28,6 +29,7 @@ from gui.app import (
     C_BG, C_PANEL, C_CARD, C_BORDER, C_ACCENT, C_DANGER,
     C_SUCCESS, C_TEXT, C_SUB, C_WARN, WIN_W, WIN_H,
 )
+from simulation.engine_const import DAY_LENGTH
 
 if TYPE_CHECKING:
     from simulation.recording.replay import ReplayReader
@@ -65,6 +67,34 @@ def _ring(arr: np.ndarray, cx: int, cy: int, r: int, color: np.ndarray) -> None:
                 px, py = cx + dx, cy + dy
                 if 0 <= px < w and 0 <= py < h:
                     arr[py, px] = color
+
+
+def _day_night_filter(img_arr: np.ndarray, tod: float) -> np.ndarray:
+    sun = math.sin(tod * 2 * math.pi - math.pi / 2)
+    brightness = 0.28 + 0.72 * (sun + 1) / 2
+    img = img_arr.astype(np.float32)
+    img *= brightness
+    night = max(0.0, -sun * 0.7)
+    if night > 0:
+        img[:, :, 2] = np.minimum(255, img[:, :, 2] + night * 28)
+        img[:, :, 0] *= (1.0 - night * 0.30)
+        img[:, :, 1] *= (1.0 - night * 0.18)
+    golden = max(0.0, 1.0 - abs(sun) * 4.5) if sun > -0.25 else 0.0
+    if golden > 0:
+        img[:, :, 0] = np.minimum(255, img[:, :, 0] + golden * 45)
+        img[:, :, 1] = np.minimum(255, img[:, :, 1] + golden * 18)
+    return np.clip(img, 0, 255).astype(np.uint8)
+
+
+def _sky_color(tod: float) -> str:
+    sun = math.sin(tod * 2 * math.pi - math.pi / 2)
+    if sun < -0.25:
+        return "#020810"
+    if sun < 0.0:
+        return "#0c0c1e"
+    if sun < 0.3:
+        return "#0a0a18"
+    return "#000011"
 
 
 class ReplayFrame(tk.Frame):
@@ -441,9 +471,16 @@ class ReplayFrame(tk.Frame):
         self._tick_lbl.config(
             text=f"{self._cur_tick:,} / {self._reader.total_ticks:,}"
         )
+        tod   = (self._cur_tick % DAY_LENGTH) / DAY_LENGTH
+        sun   = math.sin(tod * 2 * math.pi - math.pi / 2)
+        icone = "\U0001f319" if sun < -0.1 else ("\U0001f305" if sun < 0.2 else "☀")
+        heure = int(tod * 24)
+        day_n = (self._cur_tick // DAY_LENGTH) % 365
         self._canvas.itemconfig(
-            self._hud_tick, text=f"tick {self._cur_tick:,}"
+            self._hud_tick,
+            text=f"tick {self._cur_tick:,}  {icone} {heure:02d}h  J{day_n}",
         )
+        self._canvas.configure(bg=_sky_color(tod))
 
         self._render_frame(snap)
         self._update_pop_panel(snap.species_counts)
@@ -452,8 +489,10 @@ class ReplayFrame(tk.Frame):
             self._update_entity_panel(snap)
 
     def _render_frame(self, snap: "WorldSnapshot") -> None:
+        tod = (snap.tick % DAY_LENGTH) / DAY_LENGTH
+        arr = _day_night_filter(self._terrain_arr, tod)
+        np.copyto(self._frame_arr, arr)
         arr = self._frame_arr
-        np.copyto(arr, self._terrain_arr)
 
         sx, sy = self._scale_x, self._scale_y
         W, H   = CANVAS_W, CANVAS_H
