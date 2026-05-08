@@ -190,22 +190,10 @@ class SimulationEngine:
         ind_grid   = self._ind_grid
         plant_grid = self._plant_grid
 
-        # ── Centroïdes de troupeau ────────────────────────────────────────────
-        _hc_acc: dict = {}
-        for ind in self.individuals:
-            if ind.species.herd_cohesion > 0:
-                name = ind.species.name
-                if name not in _hc_acc:
-                    _hc_acc[name] = [0.0, 0.0, 0]
-                _hc_acc[name][0] += ind.x
-                _hc_acc[name][1] += ind.y
-                _hc_acc[name][2] += 1
-        herd_centroids = {
-            name: (acc[0] / acc[2], acc[1] / acc[2])
-            for name, acc in _hc_acc.items()
-        }
-
         # ── Animaux ──────────────────────────────────────────────────────────
+        # Le centroïde de troupeau est calculé localement (voisins dans r_repro)
+        # pour éviter la convergence vers le centre de la carte causée par un
+        # centroïde global.
         time_of_day     = (self.tick_count % DAY_LENGTH) / DAY_LENGTH
         new_individuals = []
         self._last_newborns: list = []
@@ -215,6 +203,21 @@ class SimulationEngine:
             nearby_inds   = ind_grid.query(ind.x, ind.y, r_perc)
             nearby_plants = plant_grid.query(ind.x, ind.y, r_perc)
             nearby_repro  = ind_grid.query(ind.x, ind.y, r_repro)
+
+            # Centroïde local : congénères proches uniquement (rayon = 3× perception)
+            local_centroid = None
+            if ind.species.herd_cohesion > 0:
+                same = [o for o in nearby_repro
+                        if o is not ind and o.species.name == ind.species.name]
+                if same:
+                    local_centroid = (
+                        sum(o.x for o in same) / len(same),
+                        sum(o.y for o in same) / len(same),
+                    )
+
+            herd_centroids = (
+                {ind.species.name: local_centroid} if local_centroid else {}
+            )
             babies = ind.tick(self.grid, nearby_plants, nearby_inds, time_of_day,
                               herd_centroids=herd_centroids,
                               all_individuals_repro=nearby_repro)
