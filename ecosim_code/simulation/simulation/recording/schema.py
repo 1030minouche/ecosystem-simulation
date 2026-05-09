@@ -27,6 +27,7 @@ class EntitySnapshot:
     genome_json: str = ""
     reproduction_cooldown: int = 0
     gestation_timer: int = 0
+    infected: bool = False
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,7 @@ class WorldSnapshot:
                 genome_json=d.get("genome_json", ""),
                 reproduction_cooldown=d.get("reproduction_cooldown", 0),
                 gestation_timer=d.get("gestation_timer", 0),
+                infected=d.get("infected", False),
             )
 
         return cls(
@@ -73,7 +75,7 @@ class WorldSnapshot:
 @dataclass(frozen=True)
 class Event:
     tick: int
-    kind: Literal["birth", "death", "move"]
+    kind: Literal["birth", "death", "move", "disease_infection", "disease_death"]
     entity_id: int
     payload: dict
 

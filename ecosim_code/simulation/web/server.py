@@ -20,11 +20,12 @@ import aiohttp
 import numpy as np
 from aiohttp import web
 
-_BASE      = Path(__file__).parent
-_STATIC    = _BASE / "static"
-_SIM_DIR   = _BASE.parent
-_SPECIES_D = _SIM_DIR / "species"
-_RUNS_D    = _SIM_DIR / "runs"
+_BASE       = Path(__file__).parent
+_STATIC     = _BASE / "static"
+_SIM_DIR    = _BASE.parent
+_SPECIES_D  = _SIM_DIR / "species"
+_RUNS_D     = _SIM_DIR / "runs"
+_DISEASES_D = _SIM_DIR / "species_data" / "diseases"
 
 _mgr = None  # SimulationManager — instancié dans run()
 
@@ -191,7 +192,8 @@ def _read_frame_json(db: str, tick: int) -> dict:
         "individuals": [
             {"id": e.id, "sp": e.species,
              "x": round(e.x, 1), "y": round(e.y, 1),
-             "energy": round(e.energy, 1), "age": e.age, "state": e.state}
+             "energy": round(e.energy, 1), "age": e.age, "state": e.state,
+             "infected": e.infected}
             for e in snap.individuals if e.alive
         ],
         "counts": snap.species_counts,
@@ -267,6 +269,56 @@ async def api_terrain_preview(request):
     )
     return web.Response(body=png, content_type="image/png",
                         headers={"Cache-Control": "no-store"})
+
+
+async def api_diseases(request):
+    """GET /api/diseases — liste toutes les maladies disponibles."""
+    diseases = []
+    if _DISEASES_D.exists():
+        for p in sorted(_DISEASES_D.glob("*.json")):
+            try:
+                d = json.loads(p.read_text(encoding="utf-8"))
+                diseases.append({
+                    "file": p.stem,
+                    "name": d.get("name", p.stem),
+                    "transmission_rate": d.get("transmission_rate", 0),
+                    "mortality_chance":  d.get("mortality_chance", 0),
+                    "infectious_ticks":  d.get("infectious_ticks", 0),
+                })
+            except Exception:
+                pass
+    return web.json_response(diseases)
+
+
+async def api_replay_infect(request):
+    """POST /api/replay/infect — démarre une simulation à partir d'un tick
+    en infectant l'entité la plus proche du point cliqué."""
+    body        = await request.json()
+    db          = body.get("db", "")
+    tick        = int(body.get("tick", 0))
+    species     = body.get("species", "")
+    entity_x    = float(body.get("x", 0))
+    entity_y    = float(body.get("y", 0))
+    disease     = body.get("disease_name", "")
+    more_ticks  = int(body.get("more_ticks", 5000))
+
+    if not db or not Path(db).exists():
+        return web.json_response({"ok": False, "error": "db introuvable"}, status=404)
+    if not disease:
+        return web.json_response({"ok": False, "error": "maladie manquante"}, status=400)
+
+    config = {
+        "mode":         "infect",
+        "db_path":      db,
+        "tick":         tick,
+        "species":      species,
+        "entity_x":     entity_x,
+        "entity_y":     entity_y,
+        "disease_name": disease,
+        "ticks":        more_ticks,
+    }
+    ok = _mgr.start(config)
+    return web.json_response({"ok": ok, "already_running": not ok})
 
 
 async def api_sim_start(request):
@@ -476,17 +528,34 @@ async def websocket_handler(request):
 # ── Analyse helpers ──────────────────────────────────────────────────────────
 
 def _read_timeseries(db: str) -> list:
-    """Toutes les populations par keyframe. Lit la table counts (rapide) ou dégrade."""
+    """Toutes les populations par keyframe avec eco_metrics si disponible."""
     import sqlite3, gzip
     conn = sqlite3.connect(db, check_same_thread=False)
     try:
+        try:
+            rows = conn.execute(
+                "SELECT tick, data, eco_metrics FROM counts ORDER BY tick"
+            ).fetchall()
+            if rows:
+                conn.close()
+                result = []
+                for t, d, em in rows:
+                    row: dict = {"tick": t, "counts": json.loads(d)}
+                    if em:
+                        try:
+                            row["eco"] = json.loads(em)
+                        except Exception:
+                            pass
+                    result.append(row)
+                return result
+        except Exception:
+            pass
         rows = conn.execute("SELECT tick, data FROM counts ORDER BY tick").fetchall()
         if rows:
             conn.close()
             return [{"tick": t, "counts": json.loads(d)} for t, d in rows]
     except Exception:
         pass
-    # Fallback : lit les keyframes complètes
     rows = conn.execute("SELECT tick, data_blob FROM keyframes ORDER BY tick").fetchall()
     conn.close()
     result = []
@@ -682,24 +751,89 @@ async def api_genetics(request):
 
 
 def _read_epidemic(db: str) -> dict:
-    """Courbes S/E/I/R par espèce (depuis disease_states dans les events)."""
+    """Épidémiologie complète : courbes, R₀, par espèce, métadonnées d'infection."""
     import sqlite3
+    from collections import Counter
     conn = sqlite3.connect(db, check_same_thread=False)
-    disease_events = []
+
+    meta = dict(conn.execute("SELECT key, value FROM meta").fetchall())
+    infect_meta: dict = {}
+    if meta.get("infect_disease"):
+        infect_meta = {
+            "disease":    meta.get("infect_disease", ""),
+            "source_tick": int(meta.get("infect_tick", 0)),
+            "source_db":   meta.get("infect_source", ""),
+        }
+
+    inf_events:   list[dict] = []
+    death_events: list[dict] = []
     try:
-        for (tick, payload_str) in conn.execute(
-                "SELECT tick, payload FROM events WHERE kind IN "
-                "('disease_infection','disease_death') ORDER BY tick"):
-            disease_events.append((tick, json.loads(payload_str)))
+        for (tick, eid, payload_str) in conn.execute(
+                "SELECT tick, entity_id, payload FROM events "
+                "WHERE kind='disease_infection' ORDER BY tick"):
+            p = json.loads(payload_str)
+            inf_events.append({
+                "tick": tick, "uid": eid, "type": "infection",
+                "disease": p.get("disease_name", "?"),
+                "species": p.get("species", "?"),
+                "source_uid": p.get("source_uid", -1),
+            })
+        for (tick, eid, payload_str) in conn.execute(
+                "SELECT tick, entity_id, payload FROM events "
+                "WHERE kind='disease_death' ORDER BY tick"):
+            p = json.loads(payload_str)
+            death_events.append({
+                "tick": tick, "uid": eid, "type": "death",
+                "disease": p.get("disease_name", "?"),
+                "species": p.get("species", "?"),
+                "source_uid": -1,
+            })
     except Exception:
         pass
     conn.close()
+
+    diseases   = sorted({e["disease"] for e in inf_events + death_events})
+    cumulative = {d: sum(1 for e in inf_events   if e["disease"] == d) for d in diseases}
+    deaths     = {d: sum(1 for e in death_events if e["disease"] == d) for d in diseases}
+
+    BIN = 200
+    infections_by_tick: list[dict] = []
+    if inf_events:
+        min_t = inf_events[0]["tick"]
+        max_t = inf_events[-1]["tick"]
+        for b in range(min_t, max_t + BIN, BIN):
+            row: dict = {"tick": b}
+            for d in diseases:
+                row[d] = sum(1 for e in inf_events
+                             if e["disease"] == d and b <= e["tick"] < b + BIN)
+            infections_by_tick.append(row)
+
+    r0: dict = {}
+    for d in diseases:
+        sources = [e["source_uid"] for e in inf_events
+                   if e["disease"] == d and e["source_uid"] >= 0]
+        if sources:
+            c = Counter(sources)
+            r0[d] = round(sum(c.values()) / len(c), 2)
+
     by_species: dict = {}
-    for tick, p in disease_events:
-        sp   = p.get("species", "?")
-        kind = p.get("disease_name", "?")
-        by_species.setdefault(sp, []).append({"tick": tick, "event": kind})
-    return {"by_species": by_species, "total_events": len(disease_events)}
+    for e in inf_events:
+        by_species.setdefault(e["species"], {}).setdefault(e["disease"], 0)
+        by_species[e["species"]][e["disease"]] += 1
+
+    all_ev = sorted(inf_events + death_events, key=lambda x: x["tick"])
+    return {
+        "diseases":           diseases,
+        "total_infections":   sum(cumulative.values()),
+        "total_deaths":       sum(deaths.values()),
+        "cumulative":         cumulative,
+        "deaths":             deaths,
+        "r0":                 r0,
+        "infections_by_tick": infections_by_tick,
+        "by_species":         by_species,
+        "recent_events":      all_ev[-60:],
+        "infect_meta":        infect_meta,
+    }
 
 
 async def api_epidemic(request):
@@ -751,49 +885,20 @@ def _render_heatmap_png(db: str, tick: int, species: str,
                          out_w: int = 300, out_h: int = 300) -> bytes:
     """PNG heatmap de densité pour une espèce à un tick donné."""
     from simulation.recording.replay import ReplayReader
+    from web.renderer import render_heatmap
+    from PIL import Image
     import io
     try:
-        from PIL import Image
-        import numpy as np
-        try:
-            from scipy.stats import gaussian_kde
-            _HAS_SCIPY = True
-        except ImportError:
-            _HAS_SCIPY = False
-
-        reader = ReplayReader(Path(db))
-        m      = reader.meta
+        reader  = ReplayReader(Path(db))
+        m       = reader.meta
         world_w = int(m.get("world_width", 500))
         world_h = int(m.get("world_height", 500))
-        snap   = reader.state_at(tick)
+        snap    = reader.state_at(tick)
         reader.close()
         if snap is None:
             raise ValueError("no snap")
-
-        xs = np.array([e.x for e in snap.individuals if e.alive and e.species == species])
-        ys = np.array([e.y for e in snap.individuals if e.alive and e.species == species])
-        if len(xs) < 3 or not _HAS_SCIPY:
-            img = Image.new("RGB", (out_w, out_h), (20, 20, 40))
-        else:
-            gx = np.linspace(0, world_w, out_w)
-            gy = np.linspace(0, world_h, out_h)
-            gxx, gyy = np.meshgrid(gx, gy)
-            positions = np.vstack([gxx.ravel(), gyy.ravel()])
-            values    = np.vstack([xs, ys])
-            kde       = gaussian_kde(values, bw_method=0.15)
-            density   = kde(positions).reshape(out_h, out_w)
-            density   = density / density.max()
-            rgb = np.zeros((out_h, out_w, 3), dtype=np.uint8)
-            rgb[..., 0] = (density * 255).astype(np.uint8)
-            rgb[..., 1] = (density * 120).astype(np.uint8)
-            img = Image.fromarray(rgb, "RGB")
-
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return buf.getvalue()
+        return render_heatmap(snap, world_w, world_h, species, out_w, out_h)
     except Exception:
-        from PIL import Image
-        import io
         img = Image.new("RGB", (out_w, out_h), (20, 20, 40))
         buf = io.BytesIO()
         img.save(buf, format="PNG")
@@ -820,9 +925,11 @@ def _build_app() -> web.Application:
     app.router.add_get ("/",                        handle_index)
     app.router.add_get ("/static/{path:.*}",        handle_static)
     app.router.add_get ("/api/species",             api_species)
+    app.router.add_get ("/api/diseases",            api_diseases)
     app.router.add_post("/api/terrain/preview",     api_terrain_preview)
     app.router.add_post("/api/sim/start",           api_sim_start)
     app.router.add_post("/api/sim/cancel",          api_sim_cancel)
+    app.router.add_post("/api/replay/infect",       api_replay_infect)
     app.router.add_get ("/api/runs",                api_runs)
     app.router.add_get ("/api/replay/meta",         api_replay_meta)
     app.router.add_get ("/api/replay/terrain",      api_replay_terrain)

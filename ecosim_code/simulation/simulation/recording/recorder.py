@@ -27,6 +27,48 @@ if TYPE_CHECKING:
     from simulation.engine import SimulationEngine
 
 
+import math as _math
+
+
+def _compute_eco_metrics(engine) -> dict:
+    """Shannon H', Simpson D, biomasse totale, sex ratio, âge moyen."""
+    inds = engine.individuals
+    if not inds:
+        return {"H": 0.0, "D": 0.0, "biomass": 0.0, "sex_ratio": None, "mean_age": 0.0}
+    counts = {}
+    total_energy = 0.0
+    total_age = 0
+    n_male = 0
+    n_female = 0
+    for ind in inds:
+        sp = ind.species.name
+        counts[sp] = counts.get(sp, 0) + 1
+        total_energy += ind.energy
+        total_age += ind.age
+        sex = getattr(ind, 'sex', '?')
+        if sex == 'male':
+            n_male += 1
+        elif sex == 'female':
+            n_female += 1
+    total = len(inds)
+    H = 0.0
+    D_sum = 0.0
+    for c in counts.values():
+        p = c / total
+        if p > 0:
+            H -= p * _math.log(p)
+            D_sum += p * p
+    sex_ratio = round(n_male / (n_male + n_female), 3) if (n_male + n_female) > 0 else None
+    return {
+        "H":         round(H, 4),
+        "D":         round(1.0 - D_sum, 4),
+        "biomass":   round(total_energy, 2),
+        "sex_ratio": sex_ratio,
+        "mean_age":  round(total_age / total, 1),
+        "n_species": len(counts),
+    }
+
+
 class Recorder:
     def __init__(self, path: Path, keyframe_every: int = 500,
                  frame_renderer=None, append: bool = False) -> None:
@@ -78,12 +120,54 @@ class Recorder:
             )""")
         c.execute("""
             CREATE TABLE IF NOT EXISTS counts (
-                tick INTEGER PRIMARY KEY,
-                data TEXT
+                tick           INTEGER PRIMARY KEY,
+                data           TEXT,
+                season_metrics TEXT,
+                eco_metrics    TEXT
             )""")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS displacement (
+                uid                INTEGER,
+                tick               INTEGER,
+                x                  REAL,
+                y                  REAL,
+                cumulative_distance REAL,
+                PRIMARY KEY (uid, tick)
+            )""")
+        # ── Tables de recherche ────────────────────────────────────────────────
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS individuals (
+                uid          INTEGER PRIMARY KEY,
+                species      TEXT,
+                born_tick    INTEGER,
+                parent_a_uid INTEGER DEFAULT -1,
+                parent_b_uid INTEGER DEFAULT -1,
+                sex          TEXT
+            )""")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS life_history (
+                uid                 INTEGER PRIMARY KEY,
+                species             TEXT,
+                born_tick           INTEGER,
+                death_tick          INTEGER,
+                death_cause         TEXT,
+                n_offspring         INTEGER DEFAULT 0,
+                lifetime_energy_avg REAL,
+                sex                 TEXT,
+                genome_json         TEXT
+            )""")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS pedigree (
+                uid          INTEGER PRIMARY KEY,
+                parent_a_uid INTEGER DEFAULT -1,
+                parent_b_uid INTEGER DEFAULT -1
+            )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_individuals_species ON individuals(species)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_life_history_species ON life_history(species)")
         if not c.execute("SELECT 1 FROM meta WHERE key='run_id'").fetchone():
             c.execute("INSERT INTO meta(key, value) VALUES ('run_id', ?)",
                       (uuid.uuid4().hex[:8],))
+        c.execute("INSERT OR IGNORE INTO meta(key,value) VALUES ('schema_version','3')")
         c.commit()
 
     def write_engine_meta(self, engine: "SimulationEngine") -> None:
@@ -116,15 +200,61 @@ class Recorder:
 
     def on_tick_end(self, engine: "SimulationEngine") -> None:
         tick = engine.tick_count
-        # Enregistre les naissances (généalogie)
+        # ── Naissances : events + individuals + pedigree ─────────────────────
         for baby in getattr(engine, '_last_newborns', []):
+            uid      = getattr(baby, 'uid', -1)
+            pa_uid   = getattr(baby, 'parent_id', -1)
+            pb_uid   = getattr(baby, 'parent_b_id', -1)
+            self._conn.execute(
+                "INSERT OR IGNORE INTO events(tick, kind, entity_id, payload) VALUES (?,?,?,?)",
+                (tick, 'birth', uid, json.dumps({
+                    'parent_a_uid': pa_uid,
+                    'parent_b_uid': pb_uid,
+                    'species':      baby.species.name,
+                    'x':            round(baby.x, 2),
+                    'y':            round(baby.y, 2),
+                }, separators=(',', ':')))
+            )
+            self._conn.execute(
+                "INSERT OR IGNORE INTO individuals(uid, species, born_tick, parent_a_uid, parent_b_uid, sex) VALUES (?,?,?,?,?,?)",
+                (uid, baby.species.name, tick, pa_uid, pb_uid, getattr(baby, 'sex', '?'))
+            )
+            self._conn.execute(
+                "INSERT OR IGNORE INTO pedigree(uid, parent_a_uid, parent_b_uid) VALUES (?,?,?)",
+                (uid, pa_uid, pb_uid)
+            )
+        # ── Morts : life_history ──────────────────────────────────────────────
+        for ind in getattr(engine, '_last_dead', []):
+            uid   = getattr(ind, 'uid', -1)
+            n_tks = max(1, getattr(ind, '_energy_ticks', 1))
+            avg_e = round(getattr(ind, '_energy_sum', ind.energy) / n_tks, 3)
+            genome_j = (ind.genome.to_json()
+                        if hasattr(ind, 'genome') else "")
+            self._conn.execute(
+                "INSERT OR REPLACE INTO life_history"
+                "(uid, species, born_tick, death_tick, death_cause, n_offspring, lifetime_energy_avg, sex, genome_json)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                (uid, ind.species.name,
+                 tick - ind.age,  # approximation du tick de naissance
+                 tick,
+                 getattr(ind, 'death_cause', 'unknown'),
+                 getattr(ind, 'n_offspring', 0),
+                 avg_e,
+                 getattr(ind, 'sex', '?'),
+                 genome_j)
+            )
+        # ── Événements maladie ────────────────────────────────────────────────
+        for ev in getattr(engine, '_last_disease_events', []):
+            entity_id = ev.get("target_uid", -1)
             self._conn.execute(
                 "INSERT INTO events(tick, kind, entity_id, payload) VALUES (?,?,?,?)",
-                (tick, 'birth', id(baby), json.dumps({
-                    'parent_id': getattr(baby, 'parent_id', -1),
-                    'species':   baby.species.name,
-                    'x':         round(baby.x, 2),
-                    'y':         round(baby.y, 2),
+                (tick, ev["type"], entity_id, json.dumps({
+                    'disease_name': ev.get("disease", ""),
+                    'species':      ev.get("species", ""),
+                    'x':            ev.get("x", 0),
+                    'y':            ev.get("y", 0),
+                    'source_uid':   ev.get("source_uid", -1),
+                    'target_uid':   ev.get("target_uid", -1),
                 }, separators=(',', ':')))
             )
         if tick - self._last_keyframe >= self.keyframe_every:
@@ -163,6 +293,7 @@ class Recorder:
                 genome_json=getattr(i, "genome", None) and i.genome.to_json() or "",
                 reproduction_cooldown=getattr(i, "reproduction_cooldown", 0),
                 gestation_timer=getattr(i, "gestation_timer", 0),
+                infected=bool(getattr(i, "disease_states", None)),
             )
             for i in engine.individuals
         )
@@ -176,10 +307,31 @@ class Recorder:
             "INSERT OR REPLACE INTO keyframes(tick, data_blob) VALUES (?, ?)",
             (tick, snap.to_blob()),
         )
+        season_val = round(getattr(engine, '_season', 0.0), 4)
+        eco = _compute_eco_metrics(engine)
         self._conn.execute(
-            "INSERT OR REPLACE INTO counts(tick, data) VALUES (?,?)",
-            (tick, json.dumps(snap.species_counts, separators=(',', ':'))),
+            "INSERT OR REPLACE INTO counts(tick, data, season_metrics, eco_metrics) VALUES (?,?,?,?)",
+            (tick,
+             json.dumps(snap.species_counts, separators=(',', ':')),
+             json.dumps({"season": season_val}, separators=(',', ':')),
+             json.dumps(eco, separators=(',', ':'))),
         )
+        # ── Displacement (métriques comportementales) ──────────────────────────
+        prev = getattr(self, '_prev_positions', {})
+        new_prev = {}
+        for ind in engine.individuals:
+            uid = getattr(ind, 'uid', None)
+            if uid is None:
+                continue
+            px, py = prev.get(uid, (ind.x, ind.y))
+            dist = getattr(ind, '_cumulative_distance', 0.0) + ((ind.x - px)**2 + (ind.y - py)**2)**0.5
+            ind._cumulative_distance = dist
+            new_prev[uid] = (ind.x, ind.y)
+            self._conn.execute(
+                "INSERT OR REPLACE INTO displacement(uid, tick, x, y, cumulative_distance) VALUES (?,?,?,?,?)",
+                (uid, tick, round(ind.x, 2), round(ind.y, 2), round(dist, 3))
+            )
+        self._prev_positions = new_prev
 
         # PNG pré-rendu (si renderer fourni)
         if self._frame_renderer is not None:

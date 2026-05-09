@@ -221,8 +221,15 @@ select option { background:var(--card); }
 .run-id-chip { font-family:var(--mono); font-size:9px; color:var(--ac); opacity:.7; }
 .run-meta  { display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex-shrink:0; }
 .run-size  { font-size:10px; color:var(--t2); }
-.run-open  { font-size:10px; color:var(--ac); font-weight:600; }
-.no-runs   { font-size:11px; color:var(--t3); font-style:italic; padding:4px; }
+.run-open   { font-size:10px; color:var(--ac); font-weight:600; cursor:pointer; }
+.run-extend { font-size:10px; color:#f9a825; font-weight:600; cursor:pointer; }
+.run-extend:hover { color:#ffcc02; }
+.no-runs    { font-size:11px; color:var(--t3); font-style:italic; padding:4px; }
+.dash-ctrl  { display:flex; gap:6px; margin-bottom:6px; align-items:center; }
+.dash-filter { flex:1; background:var(--card2); border:1px solid var(--brd); color:var(--t1); padding:3px 6px; border-radius:4px; font-size:11px; }
+.dash-sort   { background:var(--card2); border:1px solid var(--brd); color:var(--t1); padding:3px 4px; border-radius:4px; font-size:11px; }
+.dash-sort-dir { background:var(--card2); border:1px solid var(--brd); color:var(--t1); padding:3px 6px; border-radius:4px; cursor:pointer; font-size:11px; }
+.run-species-hint { font-size:9px; color:var(--t3); display:block; margin-top:1px; }
 
 /* ══════════════════════════════════════════════════════════════════
    RUNNING PAGE
@@ -466,3 +473,205 @@ select option { background:var(--card); }
 .toast.error  { border-color:var(--err); color:var(--err); background:rgba(244,63,94,.1); }
 
 .hidden { display:none !important; }
+
+/* ── Modale d'infection ─────────────────────────────────────────────── */
+.modal-backdrop {
+  position:fixed; inset:0;
+  background:rgba(0,0,0,.72);
+  display:flex; align-items:center; justify-content:center;
+  z-index:9000;
+  animation:fadeIn .15s ease;
+}
+@keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
+
+.modal-box {
+  background:var(--card); border:1px solid var(--b3);
+  border-radius:var(--r2); width:360px; max-width:92vw;
+  box-shadow:0 16px 60px rgba(0,0,0,.8);
+  display:flex; flex-direction:column;
+}
+.modal-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 18px 12px; border-bottom:1px solid var(--b1);
+}
+.modal-title { font-size:13px; font-weight:600; color:var(--t1); }
+.modal-close  {
+  background:none; border:none; cursor:pointer;
+  color:var(--text-dim); font-size:14px; line-height:1;
+  padding:2px 6px; border-radius:4px;
+}
+.modal-close:hover { color:var(--t1); background:var(--card2); }
+.modal-body   { padding:16px 18px; display:flex; flex-direction:column; gap:6px; }
+.modal-footer {
+  padding:12px 18px; border-top:1px solid var(--b1);
+  display:flex; gap:8px; justify-content:flex-end;
+}
+.modal-info {
+  background:var(--bg2); border:1px solid var(--b1);
+  border-radius:var(--r1); padding:10px 12px;
+  font-size:11px; color:var(--t2); line-height:1.6;
+}
+.modal-disease-desc {
+  font-size:10px; color:var(--text-dim);
+  line-height:1.5; min-height:18px; margin-top:4px;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ÉCO-MÉTRIQUES (sidebar replay)
+   ══════════════════════════════════════════════════════════════════ */
+.eco-grid {
+  display:grid; grid-template-columns:auto 1fr;
+  gap:3px 10px; align-items:baseline;
+}
+.eco-lbl { font-size:10px; color:var(--t2); font-style:italic; }
+.eco-val {
+  font-size:11px; color:var(--ac); font-family:var(--mono);
+  font-weight:700; text-align:right;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RUNNING — live chart
+   ══════════════════════════════════════════════════════════════════ */
+.run-chart-canvas {
+  display:block; width:100%; height:110px;
+  background:var(--bg2); border:1px solid var(--b1);
+  border-radius:var(--r1); margin-bottom:14px;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ÉPIDÉMIOLOGIE TAB
+   ══════════════════════════════════════════════════════════════════ */
+.disease-layout {
+  display:flex; flex-direction:column; flex:1; overflow-y:auto; padding:12px;
+}
+
+/* État vide */
+.ep-empty-state {
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:10px; text-align:center; padding:40px; color:var(--t2);
+}
+.ep-empty-icon { font-size:52px; opacity:.3; }
+.ep-empty-hint { font-size:11px; color:var(--t3); line-height:1.7; max-width:420px; }
+
+/* Dashboard */
+.ep-dashboard { display:flex; flex-direction:column; gap:12px; }
+.ep-dashboard.hidden { display:none; }
+
+/* KPI cards */
+.ep-kpi-row {
+  display:flex; gap:10px; flex-wrap:wrap;
+}
+.ep-kpi-card {
+  flex:1; min-width:120px;
+  background:var(--card); border:1px solid var(--b1); border-radius:var(--r2);
+  padding:12px 16px;
+  border-top:3px solid var(--b2);
+}
+.ep-kpi-inf     { border-top-color:#f59e0b; }
+.ep-kpi-death   { border-top-color:var(--err); }
+.ep-kpi-r0      { border-top-color:var(--ac); }
+.ep-kpi-lethality { border-top-color:#a855f7; }
+.ep-kpi-lbl {
+  font-size:9px; font-weight:700; letter-spacing:1.5px;
+  text-transform:uppercase; color:var(--t2); margin-bottom:6px;
+}
+.ep-kpi-val {
+  font-size:26px; font-weight:800; font-family:var(--mono);
+  color:var(--t1); line-height:1;
+}
+.ep-kpi-inf   .ep-kpi-val { color:#f59e0b; }
+.ep-kpi-death .ep-kpi-val { color:var(--err); }
+.ep-kpi-r0    .ep-kpi-val { color:var(--ac); }
+
+/* Source banner (infect run) */
+.ep-source-banner {
+  display:flex; align-items:center; gap:8px;
+  background:rgba(74,143,255,.08); border:1px solid rgba(74,143,255,.25);
+  border-radius:var(--r1); padding:8px 14px;
+  font-size:11px; color:var(--t2);
+}
+.ep-source-icon { font-size:16px; }
+
+/* Body: chart + aside */
+.ep-body {
+  display:flex; gap:12px; overflow:hidden;
+}
+.ep-chart-col {
+  flex:1; min-width:0; display:flex; flex-direction:column;
+}
+.ep-chart-canvas {
+  flex:1; display:block; height:220px;
+  background:var(--bg1); border:1px solid var(--b1);
+  border-radius:var(--r1); margin-top:6px;
+}
+.ep-legend {
+  display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;
+}
+.ep-legend-item {
+  display:flex; align-items:center; gap:5px;
+  font-size:10px; color:var(--t2);
+}
+.ep-legend-dot {
+  width:10px; height:10px; border-radius:2px; flex-shrink:0;
+}
+
+/* Aside */
+.ep-aside {
+  width:230px; flex-shrink:0; overflow-y:auto;
+  display:flex; flex-direction:column;
+}
+
+/* Section title */
+.ep-section-title {
+  font-size:9px; font-weight:700; letter-spacing:2px;
+  text-transform:uppercase; color:var(--t2); margin-bottom:4px;
+  display:flex; align-items:center; gap:6px;
+}
+.ep-section-title::before {
+  content:''; width:2px; height:9px; border-radius:1px; flex-shrink:0;
+  background:linear-gradient(to bottom, var(--ac), var(--ac2));
+}
+
+/* Breakdown tables */
+.ep-breakdown { display:flex; flex-direction:column; gap:5px; }
+.ep-bd-row {
+  display:grid; grid-template-columns:1fr auto auto;
+  gap:4px 8px; align-items:center; padding:3px 0;
+  border-bottom:1px solid var(--b1); font-size:11px;
+}
+.ep-bd-row:last-child { border-bottom:none; }
+.ep-bd-name  { color:var(--t1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ep-bd-count { font-family:var(--mono); font-weight:700; color:var(--warn); text-align:right; }
+.ep-bd-deaths { font-family:var(--mono); font-size:10px; color:var(--err); text-align:right; }
+
+/* Events */
+.ep-events-section { display:flex; flex-direction:column; gap:4px; }
+.ep-events-count {
+  margin-left:6px; font-size:9px; color:var(--t3);
+  font-style:normal; font-weight:400; letter-spacing:0;
+}
+.ep-events-table { border:1px solid var(--b1); border-radius:var(--r1); overflow:hidden; }
+.ep-ev-header {
+  display:grid; grid-template-columns:90px 1fr 1fr 80px;
+  gap:0 8px; padding:5px 10px;
+  background:var(--bg2); border-bottom:1px solid var(--b1);
+  font-size:9px; font-weight:700; letter-spacing:1px;
+  text-transform:uppercase; color:var(--t3);
+}
+.ep-events-body {
+  max-height:160px; overflow-y:auto;
+}
+.ep-ev-row {
+  display:grid; grid-template-columns:90px 1fr 1fr 80px;
+  gap:0 8px; padding:5px 10px;
+  border-bottom:1px solid rgba(26,43,68,.5);
+  font-size:10px; font-family:var(--mono);
+}
+.ep-ev-row:last-child { border-bottom:none; }
+.ep-ev-row:nth-child(even) { background:rgba(0,0,0,.12); }
+.ep-ev-tick   { color:var(--t2); }
+.ep-ev-sp     { color:var(--t1); }
+.ep-ev-dis    { color:var(--warn); }
+.ep-ev-type-i { color:var(--ok); font-weight:700; }
+.ep-ev-type-d { color:var(--err); font-weight:700; }

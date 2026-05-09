@@ -102,6 +102,7 @@
             <span id="prog-eta">—</span>
           </div>
         </div>
+        <canvas id="run-chart" class="run-chart-canvas"></canvas>
         <div class="running-grid" id="running-grid"></div>
         <button id="cancel-btn" class="btn btn-danger">✕ Annuler</button>
       </div>
@@ -135,6 +136,9 @@
       </button>
       <button class="tab-btn" data-tab="days">
         <span class="tab-icon">📅</span> JOURS
+      </button>
+      <button class="tab-btn" data-tab="disease" id="tab-btn-disease">
+        <span class="tab-icon">🦠</span> ÉPIDÉMIOLOGIE
       </button>
     </nav>
 
@@ -185,6 +189,22 @@
           <div class="side-section">
             <div class="side-title">POPULATIONS</div>
             <div id="pop-panel" class="pop-panel"></div>
+          </div>
+
+          <div class="side-section">
+            <div class="side-title">ÉCO-MÉTRIQUES</div>
+            <div class="eco-grid">
+              <span class="eco-lbl">H' Shannon</span>
+              <span class="eco-val" id="eco-H">—</span>
+              <span class="eco-lbl">D Simpson</span>
+              <span class="eco-val" id="eco-D">—</span>
+              <span class="eco-lbl">Biomasse</span>
+              <span class="eco-val" id="eco-biomass">—</span>
+              <span class="eco-lbl">Ratio ♀/♂</span>
+              <span class="eco-val" id="eco-sexratio">—</span>
+              <span class="eco-lbl">Âge moyen</span>
+              <span class="eco-val" id="eco-age">—</span>
+            </div>
           </div>
 
           <div class="side-section">
@@ -330,11 +350,127 @@
       </div>
     </div><!-- /tab-days -->
 
+    <!-- ── Tab: ÉPIDÉMIOLOGIE ───────────────────────────────────────────── -->
+    <div id="tab-disease" class="tab-panel">
+      <div class="disease-layout">
+
+        <!-- État vide -->
+        <div id="ep-empty" class="ep-empty-state">
+          <div class="ep-empty-icon">🦠</div>
+          <p>Aucune donnée épidémiologique dans cette simulation.</p>
+          <p class="ep-empty-hint">Ouvrez l'onglet REPLAY, cliquez sur un individu,
+            puis utilisez <strong>🦠 Infecter cet individu…</strong>
+            pour démarrer une épidémie et relancer la simulation.</p>
+        </div>
+
+        <!-- Dashboard (visible si données) -->
+        <div id="ep-dashboard" class="ep-dashboard hidden">
+
+          <!-- Ligne de stat-cards -->
+          <div class="ep-kpi-row">
+            <div class="ep-kpi-card ep-kpi-inf">
+              <div class="ep-kpi-lbl">Infections totales</div>
+              <div class="ep-kpi-val" id="ep-total-inf">—</div>
+            </div>
+            <div class="ep-kpi-card ep-kpi-death">
+              <div class="ep-kpi-lbl">Décès (maladie)</div>
+              <div class="ep-kpi-val" id="ep-total-deaths">—</div>
+            </div>
+            <div class="ep-kpi-card ep-kpi-r0">
+              <div class="ep-kpi-lbl">R₀ (taux reprod.)</div>
+              <div class="ep-kpi-val" id="ep-r0">—</div>
+            </div>
+            <div class="ep-kpi-card">
+              <div class="ep-kpi-lbl">Pathogènes actifs</div>
+              <div class="ep-kpi-val" id="ep-n-diseases">—</div>
+            </div>
+            <div class="ep-kpi-card ep-kpi-lethality">
+              <div class="ep-kpi-lbl">Létalité</div>
+              <div class="ep-kpi-val" id="ep-lethality">—</div>
+            </div>
+          </div>
+
+          <!-- Infect meta (si simulation issue d'un replay) -->
+          <div id="ep-source-banner" class="ep-source-banner hidden">
+            <span class="ep-source-icon">🔬</span>
+            <span id="ep-source-text">Simulation issue d'un replay infecté</span>
+          </div>
+
+          <!-- Corps : courbe + aside -->
+          <div class="ep-body">
+
+            <div class="ep-chart-col">
+              <div class="ep-section-title">NOUVELLES INFECTIONS / PÉRIODE</div>
+              <canvas id="ep-chart" class="ep-chart-canvas"></canvas>
+              <div id="ep-legend" class="ep-legend"></div>
+            </div>
+
+            <aside class="ep-aside">
+              <div class="card" style="margin-bottom:10px">
+                <div class="card-title">MALADIES</div>
+                <div id="ep-by-disease" class="ep-breakdown"></div>
+              </div>
+              <div class="card">
+                <div class="card-title">PAR ESPÈCE</div>
+                <div id="ep-by-species" class="ep-breakdown"></div>
+              </div>
+            </aside>
+
+          </div><!-- /ep-body -->
+
+          <!-- Liste événements -->
+          <div class="ep-events-section">
+            <div class="ep-section-title">ÉVÉNEMENTS RÉCENTS
+              <span id="ep-events-count" class="ep-events-count"></span>
+            </div>
+            <div class="ep-events-table">
+              <div class="ep-ev-header">
+                <span>Tick</span><span>Espèce</span>
+                <span>Maladie</span><span>Type</span>
+              </div>
+              <div id="ep-events-list" class="ep-events-body"></div>
+            </div>
+          </div>
+
+        </div><!-- /ep-dashboard -->
+      </div>
+    </div><!-- /tab-disease -->
+
   </section><!-- /page-analyse -->
 
 </div><!-- #app -->
 
 <div id="toast" class="toast hidden"></div>
+
+<!-- ── Modale d'infection ─────────────────────────────────────────────────── -->
+<div id="infect-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">🦠 Infecter un individu</span>
+      <button class="modal-close" onclick="closeInfectModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-info" id="infect-target-info">—</div>
+      <div class="form-row" style="margin-top:14px">
+        <label>Maladie</label>
+        <select id="infect-disease-select" class="input-wide"></select>
+      </div>
+      <div id="infect-disease-desc" class="modal-disease-desc"></div>
+      <div class="form-row" style="margin-top:10px">
+        <label>Ticks à simuler</label>
+        <input id="infect-ticks-input" type="number" value="5000" min="100" max="500000">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeInfectModal()">Annuler</button>
+      <button class="btn btn-danger" id="infect-confirm-btn" onclick="submitInfect()">
+        🦠 Lancer l'infection
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/dashboard.js"></script>
 <script src="/static/js/app.js"></script>
 </body>
 </html>
