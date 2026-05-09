@@ -55,6 +55,8 @@
     "herd_cohesion": 0.6,
     "mutation_rate": 0.05,
     "territory_radius": 80.0,
-    "home_protection": 0.15
+    "home_protection": 0.15,
+    "disease_resistance": 0.55,
+    "food_disease_chance": 0.001
   }
 }

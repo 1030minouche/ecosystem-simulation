@@ -141,6 +141,22 @@ class Species:
 
     # Maladies
     disease_resistance: float = 0.5          # résistance aux maladies (0=aucune, 1=immunisé)
+    food_disease_chance: float = 0.0         # proba d'être contaminé à chaque repas (0-1)
+
+    # Mortalité sénescente (modèle de Gompertz)
+    # p_mort(t) = gompertz_a * exp(gompertz_b * t / max_age)
+    # Valeurs par défaut calibrées pour que p_mort(max_age) ≈ 0.05 / tick
+    gompertz_a: float = 0.0001              # taux de mortalité de base
+    gompertz_b: float = 5.0                 # accélération avec l'âge
+
+    # Dimorphisme sexuel (facteurs multiplicatifs par sexe)
+    male_speed_factor:    float = 1.0       # vitesse relative des mâles
+    female_speed_factor:  float = 1.0       # vitesse relative des femelles
+    male_max_age_factor:  float = 1.0       # longévité relative des mâles
+    female_max_age_factor: float = 1.0      # longévité relative des femelles
+
+    # Mode de capacité de charge
+    carrying_capacity_mode: str = "hard"    # "hard" = plafond dur | "emergent" = émergent
 
 
 # Cache des champs du dataclass Species — calculé une seule fois au chargement du module.

@@ -13,6 +13,34 @@ from entities.rng import rng
 from entities.death import mark_dead
 
 
+def _maybe_food_disease(individual) -> None:
+    """Tente une contamination par voie alimentaire après un repas réussi."""
+    chance = getattr(individual.species, "food_disease_chance", 0.0)
+    if not chance:
+        return
+    from entities.disease import DISEASE_REGISTRY, DiseaseState
+    if not DISEASE_REGISTRY:
+        return
+    if rng.random() >= chance:
+        return
+    name_lower = individual.species.name.lower()
+    candidates = [
+        s for s in DISEASE_REGISTRY.values()
+        if not s.affects_species or name_lower in {a.lower() for a in s.affects_species}
+    ]
+    if not candidates:
+        return
+    spec = candidates[rng.randint(0, len(candidates) - 1)]
+    existing = individual.disease_states.get(spec.name)
+    if existing and existing.status != "susceptible":
+        return
+    individual.disease_states[spec.name] = DiseaseState(
+        disease_name=spec.name,
+        status="exposed",
+        source_id=-1,
+    )
+
+
 class FeedingMixin:
 
     def _seek_food(self, grid, all_plants, all_individuals, time_of_day: float = 0.5):
@@ -86,3 +114,6 @@ class FeedingMixin:
         if target.energy <= 0:
             mark_dead(target, "predation", grid, time_of_day,
                       is_night=_is_resting(time_of_day, target.species.activity_pattern))
+
+        # Contamination alimentaire : chance d'attraper une maladie en mangeant
+        _maybe_food_disease(self)

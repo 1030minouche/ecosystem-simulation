@@ -29,10 +29,30 @@ class DiseaseSpec:
     mortality_chance: float
     immunity_ticks: int
     affects_species: list[str] = field(default_factory=list)
+    # Évolution du pathogène : taux de mutation à chaque transmission
+    mutation_rate_pathogen: float = 0.0
+    # Lignée (incrémentée à chaque mutation)
+    lineage_id: int = 0
 
     @classmethod
     def from_dict(cls, d: dict) -> "DiseaseSpec":
-        return cls(**d)
+        known = {f.name for f in cls.__dataclass_fields__.values()}
+        return cls(**{k: v for k, v in d.items() if k in known})
+
+    def mutate(self) -> "DiseaseSpec":
+        """Retourne une copie légèrement mutée du pathogène (si mutation_rate_pathogen > 0)."""
+        from entities.rng import rng
+        import copy
+        mutant = copy.copy(self)
+        mutant.lineage_id = self.lineage_id + 1
+        mutant.name = self.name  # garde le même nom (même maladie, souche différente)
+        if rng.random() < self.mutation_rate_pathogen:
+            # Virulence (mortality_chance) peut augmenter ou diminuer
+            mutant.mortality_chance = max(0.0, self.mortality_chance + rng.gauss(0.0, 0.0005))
+            # Transmissibilité inversement corrélée à la virulence (compromis évolutif)
+            delta = rng.gauss(0.0, 0.002)
+            mutant.transmission_rate = max(0.0, min(1.0, self.transmission_rate + delta))
+        return mutant
 
 
 @dataclass
@@ -79,7 +99,7 @@ def try_infect(source: "Individual", target: "Individual",
     """Tente une transmission de source à target. Retourne True si infection."""
     from entities.rng import rng
 
-    if spec.affects_species and target.species.name not in spec.affects_species:
+    if spec.affects_species and target.species.name.lower() not in {a.lower() for a in spec.affects_species}:
         return False
     existing = target.disease_states.get(spec.name)
     if existing and existing.status != "susceptible":
@@ -90,8 +110,16 @@ def try_infect(source: "Individual", target: "Individual",
     resistance = target._effective_params.get("disease_resistance", 0.5)
     effective_rate = spec.transmission_rate * (1.0 - resistance * 0.4)
     if rng.random() < effective_rate:
-        state = DiseaseState(disease_name=spec.name,
-                             status="exposed", source_id=id(source))
+        # Évolution du pathogène : muter la souche transmise
+        transmitted_spec = spec.mutate() if spec.mutation_rate_pathogen > 0 else spec
+        if transmitted_spec is not spec:
+            # Mettre à jour le registre avec la nouvelle souche (remplace la précédente)
+            DISEASE_REGISTRY[spec.name] = transmitted_spec
+        state = DiseaseState(
+            disease_name=spec.name,
+            status="exposed",
+            source_id=getattr(source, "uid", id(source)),
+        )
         target.disease_states[spec.name] = state
         return True
     return False
