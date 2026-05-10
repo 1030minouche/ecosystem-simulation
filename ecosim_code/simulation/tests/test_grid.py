@@ -17,8 +17,8 @@ class TestGrid:
 
     def test_cells_array_shape(self):
         g = Grid(30, 20)
-        assert len(g.cells) == 20           # height lignes
-        assert len(g.cells[0]) == 30        # width colonnes
+        assert g.altitude.shape == (20, 30)  # height×width
+        assert g.soil_type.shape == (20, 30)
 
     def test_numpy_altitude_shape(self):
         g = Grid(15, 25)
@@ -42,11 +42,11 @@ class TestGrid:
         assert cell.x == 3
         assert cell.y == 7
 
-    def test_all_cells_are_cell_instances(self):
+    def test_cell_at_returns_cell_instance(self):
         g = Grid(5, 5)
-        for row in g.cells:
-            for cell in row:
-                assert isinstance(cell, Cell)
+        for y in range(g.height):
+            for x in range(g.width):
+                assert isinstance(g.cell_at(x, y), Cell)
 
     # ── get_neighbors ─────────────────────────────────────────────────────────
 

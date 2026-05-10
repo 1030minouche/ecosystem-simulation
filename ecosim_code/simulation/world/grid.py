@@ -2,7 +2,7 @@ import numpy as np
 from world.cell import Cell
 
 
-class _CellView:
+class _CellView:  # noqa: F401 — kept for legacy imports
     """Vue légère (property-based) sur les tableaux numpy d'une cellule."""
     __slots__ = ("_g", "_x", "_y")
 
@@ -41,17 +41,26 @@ class Grid:
         self.humidity    = np.zeros((height, width))
         self.water_depth = np.zeros((height, width))
         self.soil_type   = np.full((height, width), "clay", dtype=object)
+        # Cycle des nutriments : richesse du sol [0, 1] (1 = très fertile)
+        self.nutrients   = np.ones((height, width), dtype=np.float32)
 
-        # Grille d'objets Cell — conservée pour les accès legacy (éditeur de terrain)
-        self.cells = [[Cell(x, y) for x in range(width)]
-                                  for y in range(height)]
+    def cell_at(self, x: int, y: int) -> Cell:
+        """Construit un Cell temporaire depuis les tableaux numpy (lecture seule)."""
+        return Cell(
+            x=x, y=y,
+            altitude=float(self.altitude[y, x]),
+            temperature=float(self.temperature[y, x]),
+            humidity=float(self.humidity[y, x]),
+            soil_type=str(self.soil_type[y, x]),
+            water_depth=float(self.water_depth[y, x]),
+        )
 
     def cell_view(self, x: int, y: int) -> _CellView:
         """Retourne une vue légère (property-based) sur la cellule (x, y)."""
         return _CellView(self, x, y)
 
     def get_cell(self, x: int, y: int) -> Cell:
-        return self.cells[y][x]
+        return self.cell_at(x, y)
 
     def nearest_non_water(self, cx: int, cy: int, max_radius: int) -> tuple[int, int] | None:
         """Retourne la cellule non-eau la plus proche dans un rayon donné."""
@@ -77,5 +86,5 @@ class Grid:
                     continue
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < self.width and 0 <= ny < self.height:
-                    neighbors.append(self.cells[ny][nx])
+                    neighbors.append(self.cell_at(nx, ny))
         return neighbors

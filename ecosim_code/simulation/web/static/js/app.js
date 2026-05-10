@@ -62,6 +62,12 @@ let geneData      = null;
 let dayCache      = new Map();   // day → {counts, tick}
 let statsData     = null;
 
+// DISEASE tab
+let epidemicData  = null;
+
+// RUNNING — historique live pour le mini-chart
+let _runHistory   = [];   // [{tick, counts}]
+
 // ── DOM helpers ───────────────────────────────────────────────────────────────
 const $   = id  => document.getElementById(id);
 const q   = sel => document.querySelector(sel);
@@ -93,8 +99,16 @@ function showTab(name) {
   if (name === 'graphs' && timeseriesData === null && analyseDb) {
     loadTimeseries();
   }
-  if (name === 'days' && timeseriesData === null && analyseDb) {
-    loadTimeseries().then(() => renderDayChart());
+  if (name === 'days' && analyseDb) {
+    if (timeseriesData === null) {
+      loadTimeseries().then(() => renderDayChart());
+    } else {
+      renderDayChart();
+    }
+  }
+  if (name === 'disease' && analyseDb) {
+    if (epidemicData === null) loadEpidemic();
+    else renderEpidemicDashboard(epidemicData);
   }
 }
 
@@ -186,8 +200,16 @@ async function loadRuns() {
       <div class="run-meta">
         <span class="run-size">${run.size_mb} MB</span>
         <span class="run-open">▶ Replay</span>
+        <span class="run-extend" title="Continuer la simulation">⊕ Étendre</span>
       </div>`;
-    el.addEventListener('click', () => openAnalyse(run.path));
+    el.querySelector('.run-open').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openAnalyse(run.path);
+    });
+    el.querySelector('.run-extend').addEventListener('click', (e) => {
+      e.stopPropagation();
+      onExtend(run.path);
+    });
     list.appendChild(el);
   });
 }
@@ -254,6 +276,20 @@ function onLaunch() {
   });
 }
 
+function onExtend(dbPath) {
+  const ticks = parseInt(prompt('Ticks supplémentaires à simuler :', '1000'));
+  if (!ticks || ticks <= 0) return;
+  runConfig = { mode: 'extend', db_path: dbPath, ticks };
+  $('run-config-lbl').textContent = `Extension · ${ticks.toLocaleString()} ticks · ${dbPath}`;
+  $('prog-total').textContent = ticks.toLocaleString();
+  resetProgressUI();
+  showPage('running');
+  fetch('/api/sim/start', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(runConfig),
+  });
+}
+
 function resetProgressUI() {
   $('progress-bar').style.width = '0%';
   $('prog-tick').textContent    = '0';
@@ -261,6 +297,8 @@ function resetProgressUI() {
   $('prog-tps').textContent     = '—';
   $('prog-eta').textContent     = '—';
   $('running-grid').innerHTML   = '';
+  _runHistory = [];
+  _clearRunChart();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -281,6 +319,9 @@ function onProgress(msg) {
   $('prog-tps').textContent     = msg.tps.toLocaleString() + ' ticks/s';
   $('prog-eta').textContent     = msg.eta_s != null ? 'ETA ' + fmtEta(msg.eta_s) : '—';
   updateRunGrid(msg.counts);
+  _runHistory.push({tick: msg.tick, counts: msg.counts});
+  if (_runHistory.length > 300) _runHistory.shift();
+  _drawRunChart();
 }
 
 function fmtEta(s) {
@@ -340,6 +381,7 @@ function wireAnalyse() {
   wireGraphsTab();
   wireGenealogyTab();
   wireDaysTab();
+  wireDiseaseTab();
 }
 
 async function openAnalyse(dbPath) {
@@ -352,6 +394,7 @@ async function openAnalyse(dbPath) {
   analyseMeta    = null;
   timeseriesData = null;
   statsData      = null;
+  epidemicData   = null;
   dayCache.clear();
   kfTicks        = [];
   kfIdx          = 0;
@@ -511,6 +554,7 @@ function gotoIdx(idx) {
   updateTickLabel(idx);
   renderIdx(idx);
   loadJsonLazy(kfTicks[idx]);
+  updateEcoMetrics(idx);
 }
 
 function updateTickLabel(idx) {
@@ -539,7 +583,27 @@ function renderIdx(idx) {
     ctx.fillStyle = '#050d18';
     ctx.fillRect(0, 0, cv.width, cv.height);
   }
+  if (lastJsonSnap) drawInfectedDots(ctx, lastJsonSnap, cv.width, cv.height);
   if (selectedId !== null && lastJsonSnap) drawSelectionRing(ctx, lastJsonSnap, cv.width, cv.height);
+}
+
+function drawInfectedDots(ctx, snap, cw, ch) {
+  if (!analyseMeta) return;
+  const infected = snap.individuals.filter(e => e.infected);
+  if (!infected.length) return;
+  ctx.save();
+  infected.forEach(e => {
+    const px = e.x / analyseMeta.world_w * cw;
+    const py = e.y / analyseMeta.world_h * ch;
+    ctx.beginPath();
+    ctx.arc(px, py, 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(220,30,30,0.85)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,80,80,0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+  ctx.restore();
 }
 
 function drawSelectionRing(ctx, snap, cw, ch) {
@@ -777,10 +841,16 @@ function updateEntityCard(snap) {
       id: ${entity.id}<br>
       x: ${entity.x?.toFixed(1)} &nbsp; y: ${entity.y?.toFixed(1)}<br>
       énergie: ${entity.energy?.toFixed(1)} &nbsp; âge: ${entity.age?.toLocaleString()}<br>
-      état: ${entity.state || '—'}
+      état: ${entity.state || '—'}${entity.infected ? ' &nbsp;<span style="color:#f44;font-weight:700">&#9679; infecté</span>' : ''}
     </div>
     <button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%"
-            onclick="searchGenealogyById(${entity.id})">🌳 Voir l'arbre généalogique</button>`;
+            onclick="searchGenealogyById(${entity.id})">🌳 Voir l'arbre généalogique</button>
+    <button class="btn btn-danger btn-sm" id="infect-entity-btn" style="margin-top:6px;width:100%">
+      🦠 Infecter cet individu…
+    </button>`;
+  const infectBtn = card.querySelector('#infect-entity-btn');
+  if (infectBtn) infectBtn.addEventListener('click', () =>
+    openInfectModal({sp: entity.sp, x: entity.x, y: entity.y, id: entity.id}));
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1318,6 +1388,400 @@ function renderDayChart(highlightTick = null) {
     const v = maxY * (1 - i/3);
     ctx.fillText(Math.round(v).toLocaleString(), PAD.l - 4, PAD.t + (ch/3)*i + 4);
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INFECTION — clic sur individu → injecter une maladie → relancer
+// ══════════════════════════════════════════════════════════════════════════════
+let _infectTarget = null;   // { sp, x, y, id }
+let _infectTick   = null;   // tick de la frame courante
+let _diseaseList  = null;   // cache des maladies disponibles
+
+async function openInfectModal(entityInfo) {
+  _infectTarget = entityInfo;
+  _infectTick   = kfTicks[kfIdx] ?? 0;
+
+  const sp    = speciesMap.get(entityInfo.sp);
+  const color = sp ? sp.color : '#888';
+  $('infect-target-info').innerHTML =
+    `<span class="sp-dot" style="background:${color};display:inline-block;` +
+    `margin-right:6px;vertical-align:middle"></span>` +
+    `<strong style="color:${color}">${entityInfo.sp}</strong>` +
+    `&nbsp;—&nbsp;x:${entityInfo.x?.toFixed(1)} y:${entityInfo.y?.toFixed(1)}<br>` +
+    `<span style="color:var(--text-dim)">Tick: ${_infectTick.toLocaleString()}</span>`;
+
+  if (!_diseaseList) {
+    try {
+      _diseaseList = await fetch('/api/diseases').then(r => r.json());
+    } catch { _diseaseList = []; }
+  }
+
+  const sel = $('infect-disease-select');
+  sel.innerHTML = '';
+  sel.onchange  = updateInfectDesc;   // onchange évite l'accumulation de listeners
+  if (!_diseaseList.length) {
+    sel.innerHTML = '<option value="">— aucune maladie disponible —</option>';
+    $('infect-confirm-btn').disabled = true;
+  } else {
+    _diseaseList.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.name;
+      opt.textContent = d.name;
+      sel.appendChild(opt);
+    });
+    $('infect-confirm-btn').disabled = false;
+    updateInfectDesc();
+  }
+
+  $('infect-modal').classList.remove('hidden');
+}
+
+function updateInfectDesc() {
+  const name = $('infect-disease-select').value;
+  const d    = (_diseaseList || []).find(x => x.name === name);
+  if (!d) { $('infect-disease-desc').textContent = ''; return; }
+  $('infect-disease-desc').textContent =
+    `Transmission: ${(d.transmission_rate * 100).toFixed(0)}% · ` +
+    `Mortalité: ${(d.mortality_chance * 100).toFixed(2)}%/tick · ` +
+    `Contagieux: ${d.infectious_ticks} ticks`;
+}
+
+function closeInfectModal() {
+  $('infect-modal').classList.add('hidden');
+  _infectTarget = null;
+}
+
+async function submitInfect() {
+  // Capturer la cible AVANT closeInfectModal qui la met à null
+  const target    = _infectTarget;
+  const infectTck = _infectTick ?? 0;
+  if (!target || !analyseDb) return;
+
+  const disease   = $('infect-disease-select').value;
+  const moreTicks = parseInt($('infect-ticks-input').value) || 5000;
+  if (!disease) { toast('Choisissez une maladie', true); return; }
+
+  closeInfectModal();
+  stopPlay();
+
+  const body = {
+    db:           analyseDb,
+    tick:         infectTck,
+    species:      target.sp,
+    x:            target.x,
+    y:            target.y,
+    disease_name: disease,
+    more_ticks:   moreTicks,
+  };
+
+  toast(`Démarrage de l'infection de ${target.sp} par ${disease}…`);
+
+  try {
+    const res = await fetch('/api/replay/infect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(r => r.json());
+
+    if (res.ok) {
+      $('prog-total').textContent = moreTicks.toLocaleString();
+      resetProgressUI();
+      showPage('running');
+      setText('run-config-lbl',
+        `🦠 ${disease} → ${target.sp} · ${moreTicks.toLocaleString()} ticks depuis tick ${infectTck.toLocaleString()}`);
+    } else if (res.already_running) {
+      toast('Une simulation est déjà en cours', true);
+    } else {
+      toast('Erreur serveur : ' + (res.error || 'inconnue'), true);
+    }
+  } catch (e) {
+    toast('Erreur réseau : ' + (e.message || e), true);
+  }
+}
+
+// Fermer la modale avec Échap
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeInfectModal();
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ÉCO-MÉTRIQUES — mise à jour depuis les timeseries
+// ══════════════════════════════════════════════════════════════════════════════
+function updateEcoMetrics(idx) {
+  const eco = timeseriesData?.[idx]?.eco;
+  if (!eco) {
+    ['eco-H','eco-D','eco-biomass','eco-sexratio','eco-age']
+      .forEach(id => setText(id, '—'));
+    return;
+  }
+  setText('eco-H',       eco.H       != null ? eco.H.toFixed(3)       : '—');
+  setText('eco-D',       eco.D       != null ? eco.D.toFixed(3)       : '—');
+  setText('eco-biomass', eco.biomass != null
+    ? Math.round(eco.biomass).toLocaleString() + ' E' : '—');
+  setText('eco-sexratio',eco.sex_ratio != null ? eco.sex_ratio.toFixed(2)  : '—');
+  setText('eco-age',     eco.mean_age != null  ? Math.round(eco.mean_age) + ' ticks' : '—');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LIVE CHART (page RUNNING)
+// ══════════════════════════════════════════════════════════════════════════════
+const DISEASE_COLORS = ['#f59e0b','#ef4444','#8b5cf6','#06b6d4','#10b981','#f97316'];
+
+function _clearRunChart() {
+  const cv = $('run-chart');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+}
+
+function _drawRunChart() {
+  const cv = $('run-chart');
+  if (!cv || !_runHistory.length) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W   = cv.offsetWidth  || 600;
+  const H   = cv.offsetHeight || 110;
+  if (cv.width !== W * dpr || cv.height !== H * dpr) {
+    cv.width = W * dpr; cv.height = H * dpr;
+  }
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const PAD = {t:8, r:10, b:18, l:38};
+  const cw  = W - PAD.l - PAD.r;
+  const ch  = H - PAD.t - PAD.b;
+
+  // Collect all species
+  const allSp = [...new Set(_runHistory.flatMap(r => Object.keys(r.counts)))];
+  let maxY = 1;
+  _runHistory.forEach(r => Object.values(r.counts).forEach(n => { if (n > maxY) maxY = n; }));
+
+  // Grid
+  ctx.strokeStyle = 'rgba(26,43,68,.5)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 3; i++) {
+    const y = PAD.t + ch * i / 3;
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + cw, y); ctx.stroke();
+  }
+
+  // Lines per species
+  const n = _runHistory.length;
+  allSp.forEach((sp, si) => {
+    const color = speciesMap.get(sp)?.color || DISEASE_COLORS[si % DISEASE_COLORS.length];
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    _runHistory.forEach((r, i) => {
+      const x = PAD.l + (i / Math.max(n - 1, 1)) * cw;
+      const y = PAD.t + ch - (r.counts[sp] || 0) / maxY * ch;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
+
+  // Y axis labels
+  ctx.fillStyle = 'rgba(122,154,188,.6)'; ctx.font = '9px Consolas,monospace';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 3; i++) {
+    const v = Math.round(maxY * (1 - i / 3));
+    const y = PAD.t + ch * i / 3 + 3;
+    ctx.fillText(v.toLocaleString(), PAD.l - 4, y);
+  }
+  ctx.scale(1/dpr, 1/dpr);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB ÉPIDÉMIOLOGIE
+// ══════════════════════════════════════════════════════════════════════════════
+function wireDiseaseTab() { /* tab chargé via showTab → loadEpidemic */ }
+
+async function loadEpidemic() {
+  if (!analyseDb) return;
+  try {
+    epidemicData = await fetch(
+      `/api/analyse/epidemic?db=${encodeURIComponent(analyseDb)}`
+    ).then(r => r.json());
+    renderEpidemicDashboard(epidemicData);
+  } catch (e) {
+    console.error('Epidemic load error:', e);
+  }
+}
+
+function renderEpidemicDashboard(data) {
+  const hasData = data.total_infections > 0 || data.total_deaths > 0;
+  $('ep-empty').style.display     = hasData ? 'none' : '';
+  $('ep-dashboard').classList.toggle('hidden', !hasData);
+  if (!hasData) return;
+
+  // KPI cards
+  setText('ep-total-inf',    data.total_infections.toLocaleString());
+  setText('ep-total-deaths', data.total_deaths.toLocaleString());
+  const r0vals = Object.values(data.r0);
+  setText('ep-r0', r0vals.length
+    ? r0vals.map(v => v.toFixed(2)).join(' / ')
+    : '—');
+  setText('ep-n-diseases', data.diseases.length.toString());
+  const lethality = data.total_infections > 0
+    ? (data.total_deaths / data.total_infections * 100).toFixed(1) + '%'
+    : '—';
+  setText('ep-lethality', lethality);
+
+  // Source banner
+  const banner = $('ep-source-banner');
+  if (data.infect_meta?.disease) {
+    const im = data.infect_meta;
+    $('ep-source-text').textContent =
+      `Épidémie déclenchée à partir du tick ${im.source_tick.toLocaleString()}` +
+      ` · maladie : ${im.disease}`;
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
+
+  // Chart
+  _renderEpidemicChart(data);
+
+  // By disease breakdown
+  const byDis = $('ep-by-disease');
+  byDis.innerHTML = '';
+  data.diseases.forEach(d => {
+    const inf   = data.cumulative[d] ?? 0;
+    const dth   = data.deaths[d]     ?? 0;
+    const r0v   = data.r0[d]         != null ? ` · R₀=${data.r0[d]}` : '';
+    const row = document.createElement('div');
+    row.className = 'ep-bd-row';
+    row.innerHTML =
+      `<span class="ep-bd-name">${d}${r0v}</span>` +
+      `<span class="ep-bd-count">${inf.toLocaleString()}</span>` +
+      `<span class="ep-bd-deaths">${dth > 0 ? '✝' + dth : ''}</span>`;
+    byDis.appendChild(row);
+  });
+
+  // By species breakdown
+  const bySp = $('ep-by-species');
+  bySp.innerHTML = '';
+  Object.entries(data.by_species).sort((a,b)=> {
+    const ta = Object.values(a[1]).reduce((s,v)=>s+v,0);
+    const tb = Object.values(b[1]).reduce((s,v)=>s+v,0);
+    return tb - ta;
+  }).forEach(([sp, disMap]) => {
+    const total = Object.values(disMap).reduce((s,v)=>s+v,0);
+    const row = document.createElement('div');
+    row.className = 'ep-bd-row';
+    row.innerHTML =
+      `<span class="ep-bd-name">${sp}</span>` +
+      `<span class="ep-bd-count">${total.toLocaleString()}</span>` +
+      `<span class="ep-bd-deaths"></span>`;
+    bySp.appendChild(row);
+  });
+
+  // Events list
+  const evList = $('ep-events-list');
+  evList.innerHTML = '';
+  const recent = [...data.recent_events].reverse();
+  setText('ep-events-count', `(${data.recent_events.length} derniers)`);
+  recent.forEach(e => {
+    const row = document.createElement('div');
+    row.className = 'ep-ev-row';
+    const typeLabel = e.type === 'death' ? '✝ Décès' : '⬆ Infection';
+    const typeCls   = e.type === 'death' ? 'ep-ev-type-d' : 'ep-ev-type-i';
+    row.innerHTML =
+      `<span class="ep-ev-tick">${e.tick.toLocaleString()}</span>` +
+      `<span class="ep-ev-sp">${e.species}</span>` +
+      `<span class="ep-ev-dis">${e.disease}</span>` +
+      `<span class="${typeCls}">${typeLabel}</span>`;
+    evList.appendChild(row);
+  });
+}
+
+function _renderEpidemicChart(data) {
+  const cv = $('ep-chart');
+  if (!cv) return;
+  const pts = data.infections_by_tick;
+  const diseases = data.diseases;
+  if (!pts.length || !diseases.length) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const W   = cv.offsetWidth  || 500;
+  const H   = cv.offsetHeight || 220;
+  cv.width  = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const PAD  = {t:12, r:16, b:28, l:42};
+  const cw   = W - PAD.l - PAD.r;
+  const ch   = H - PAD.t - PAD.b;
+  const n    = pts.length;
+
+  let maxY = 1;
+  pts.forEach(p => diseases.forEach(d => { if ((p[d] || 0) > maxY) maxY = p[d]; }));
+
+  // Background grid
+  ctx.strokeStyle = 'rgba(26,43,68,.6)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD.t + ch * i / 4;
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + cw, y); ctx.stroke();
+  }
+
+  // Area + line per disease
+  const dColors = ['#f59e0b','#ef4444','#8b5cf6','#06b6d4','#10b981','#f97316'];
+  diseases.forEach((d, di) => {
+    const color = dColors[di % dColors.length];
+    const pts2 = pts.map((p, i) => ({
+      x: PAD.l + (i / Math.max(n-1,1)) * cw,
+      y: PAD.t + ch - (p[d] || 0) / maxY * ch,
+    }));
+
+    // Filled area
+    const grad = ctx.createLinearGradient(0, PAD.t, 0, PAD.t + ch);
+    grad.addColorStop(0, color + '55');
+    grad.addColorStop(1, color + '08');
+    ctx.beginPath();
+    ctx.moveTo(pts2[0].x, PAD.t + ch);
+    pts2.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(pts2[pts2.length-1].x, PAD.t + ch);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    pts2.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+  });
+
+  // Axes
+  ctx.strokeStyle = 'rgba(58,80,112,.8)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t + ch);
+  ctx.lineTo(PAD.l + cw, PAD.t + ch);
+  ctx.stroke();
+
+  // Y labels
+  ctx.fillStyle = 'rgba(122,154,188,.7)'; ctx.font = '9px Consolas,monospace';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const v = Math.round(maxY * (1 - i/4));
+    ctx.fillText(v, PAD.l - 5, PAD.t + ch * i / 4 + 3);
+  }
+
+  // X labels (ticks)
+  ctx.textAlign = 'center';
+  const step = Math.max(1, Math.floor(n / 5));
+  for (let i = 0; i < n; i += step) {
+    const x = PAD.l + (i / Math.max(n-1,1)) * cw;
+    ctx.fillText(pts[i].tick.toLocaleString(), x, PAD.t + ch + 16);
+  }
+
+  // Legend
+  const leg = $('ep-legend');
+  leg.innerHTML = '';
+  diseases.forEach((d, di) => {
+    const color = dColors[di % dColors.length];
+    leg.insertAdjacentHTML('beforeend',
+      `<span class="ep-legend-item">` +
+      `<span class="ep-legend-dot" style="background:${color}"></span>${d}` +
+      `</span>`);
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

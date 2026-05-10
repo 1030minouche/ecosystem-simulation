@@ -20,11 +20,12 @@ import aiohttp
 import numpy as np
 from aiohttp import web
 
-_BASE      = Path(__file__).parent
-_STATIC    = _BASE / "static"
-_SIM_DIR   = _BASE.parent
-_SPECIES_D = _SIM_DIR / "species"
-_RUNS_D    = _SIM_DIR / "runs"
+_BASE       = Path(__file__).parent
+_STATIC     = _BASE / "static"
+_SIM_DIR    = _BASE.parent
+_SPECIES_D  = _SIM_DIR / "species"
+_RUNS_D     = _SIM_DIR / "runs"
+_DISEASES_D = _SIM_DIR / "species_data" / "diseases"
 
 _mgr = None  # SimulationManager — instancié dans run()
 
@@ -191,7 +192,8 @@ def _read_frame_json(db: str, tick: int) -> dict:
         "individuals": [
             {"id": e.id, "sp": e.species,
              "x": round(e.x, 1), "y": round(e.y, 1),
-             "energy": round(e.energy, 1), "age": e.age, "state": e.state}
+             "energy": round(e.energy, 1), "age": e.age, "state": e.state,
+             "infected": e.infected}
             for e in snap.individuals if e.alive
         ],
         "counts": snap.species_counts,
@@ -269,6 +271,56 @@ async def api_terrain_preview(request):
                         headers={"Cache-Control": "no-store"})
 
 
+async def api_diseases(request):
+    """GET /api/diseases — liste toutes les maladies disponibles."""
+    diseases = []
+    if _DISEASES_D.exists():
+        for p in sorted(_DISEASES_D.glob("*.json")):
+            try:
+                d = json.loads(p.read_text(encoding="utf-8"))
+                diseases.append({
+                    "file": p.stem,
+                    "name": d.get("name", p.stem),
+                    "transmission_rate": d.get("transmission_rate", 0),
+                    "mortality_chance":  d.get("mortality_chance", 0),
+                    "infectious_ticks":  d.get("infectious_ticks", 0),
+                })
+            except Exception:
+                pass
+    return web.json_response(diseases)
+
+
+async def api_replay_infect(request):
+    """POST /api/replay/infect — démarre une simulation à partir d'un tick
+    en infectant l'entité la plus proche du point cliqué."""
+    body        = await request.json()
+    db          = body.get("db", "")
+    tick        = int(body.get("tick", 0))
+    species     = body.get("species", "")
+    entity_x    = float(body.get("x", 0))
+    entity_y    = float(body.get("y", 0))
+    disease     = body.get("disease_name", "")
+    more_ticks  = int(body.get("more_ticks", 5000))
+
+    if not db or not Path(db).exists():
+        return web.json_response({"ok": False, "error": "db introuvable"}, status=404)
+    if not disease:
+        return web.json_response({"ok": False, "error": "maladie manquante"}, status=400)
+
+    config = {
+        "mode":         "infect",
+        "db_path":      db,
+        "tick":         tick,
+        "species":      species,
+        "entity_x":     entity_x,
+        "entity_y":     entity_y,
+        "disease_name": disease,
+        "ticks":        more_ticks,
+    }
+    ok = _mgr.start(config)
+    return web.json_response({"ok": ok, "already_running": not ok})
+
+
 async def api_sim_start(request):
     config  = await request.json()
     db_path = config.get("out_path", "runs/sim.db")
@@ -289,18 +341,90 @@ async def api_sim_cancel(request):
     return web.json_response({"ok": True})
 
 
+def _enrich_run_meta(p) -> dict:
+    """Construit le dict enrichi pour une run (appelé dans un thread pool)."""
+    import sqlite3
+    from datetime import datetime
+    db = str(p)
+    try:
+        conn = sqlite3.connect(db, check_same_thread=False)
+        meta = dict(conn.execute("SELECT key, value FROM meta").fetchall())
+        ticks_row = conn.execute(
+            "SELECT MAX(tick) FROM keyframes"
+        ).fetchone()
+        last_tick = ticks_row[0] or 0
+        max_pops: dict = {}
+        species_seen: set = set()
+        for (data,) in conn.execute("SELECT data FROM counts"):
+            for sp, n in json.loads(data).items():
+                species_seen.add(sp)
+                if n > max_pops.get(sp, 0):
+                    max_pops[sp] = n
+        conn.close()
+    except Exception:
+        meta = {}
+        last_tick = 0
+        max_pops = {}
+        species_seen = set()
+
+    stat = p.stat()
+    return {
+        "path":           p.as_posix(),
+        "name":           p.name,
+        "run_id":         meta.get("run_id", ""),
+        "created_at":     datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+        "file_size_mb":   round(stat.st_size / 1e6, 2),
+        "ticks":          last_tick,
+        "species":        sorted(species_seen),
+        "max_populations": max_pops,
+        "terrain_preset": meta.get("terrain_preset", "default"),
+        "seed":           int(meta.get("seed", 0)),
+        "engine_version": meta.get("engine_version", "?"),
+    }
+
+
 async def api_runs(request):
     result = []
     if _RUNS_D.exists():
-        for p in sorted(_RUNS_D.glob("*.db"), key=lambda f: -f.stat().st_mtime):
-            result.append({
-                "path":    p.as_posix(),
-                "name":    p.name,
-                "size_mb": round(p.stat().st_size / 1e6, 2),
-                "run_id":  _quick_meta(str(p), "run_id"),
-                "mtime":   int(p.stat().st_mtime),
-            })
+        loop = asyncio.get_event_loop()
+        files = sorted(_RUNS_D.glob("*.db"), key=lambda f: -f.stat().st_mtime)
+        for p in files:
+            data = await loop.run_in_executor(None, _enrich_run_meta, p)
+            result.append(data)
     return web.json_response(result)
+
+
+async def api_runs_tag(request):
+    """PATCH /api/runs/{run_id}/tag — assigne un libellé à une run."""
+    run_id = request.match_info["run_id"]
+    body   = await request.json()
+    tag    = body.get("tag", "")
+    if not _RUNS_D.exists():
+        raise web.HTTPNotFound()
+    for p in _RUNS_D.glob("*.db"):
+        if _quick_meta(str(p), "run_id") == run_id:
+            import sqlite3
+            conn = sqlite3.connect(str(p))
+            conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES ('tag',?)", (tag,))
+            conn.commit(); conn.close()
+            return web.json_response({"ok": True})
+    raise web.HTTPNotFound()
+
+
+def _compare_runs(db_a: str, db_b: str) -> dict:
+    ts_a = _read_timeseries(db_a)
+    ts_b = _read_timeseries(db_b)
+    return {"run_a": ts_a, "run_b": ts_b}
+
+
+async def api_runs_compare(request):
+    a = request.rel_url.query.get("a", "")
+    b = request.rel_url.query.get("b", "")
+    if not a or not b or not Path(a).exists() or not Path(b).exists():
+        raise web.HTTPNotFound()
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, _compare_runs, a, b)
+    return web.json_response(data)
 
 
 async def api_replay_meta(request):
@@ -404,17 +528,34 @@ async def websocket_handler(request):
 # ── Analyse helpers ──────────────────────────────────────────────────────────
 
 def _read_timeseries(db: str) -> list:
-    """Toutes les populations par keyframe. Lit la table counts (rapide) ou dégrade."""
+    """Toutes les populations par keyframe avec eco_metrics si disponible."""
     import sqlite3, gzip
     conn = sqlite3.connect(db, check_same_thread=False)
     try:
+        try:
+            rows = conn.execute(
+                "SELECT tick, data, eco_metrics FROM counts ORDER BY tick"
+            ).fetchall()
+            if rows:
+                conn.close()
+                result = []
+                for t, d, em in rows:
+                    row: dict = {"tick": t, "counts": json.loads(d)}
+                    if em:
+                        try:
+                            row["eco"] = json.loads(em)
+                        except Exception:
+                            pass
+                    result.append(row)
+                return result
+        except Exception:
+            pass
         rows = conn.execute("SELECT tick, data FROM counts ORDER BY tick").fetchall()
         if rows:
             conn.close()
             return [{"tick": t, "counts": json.loads(d)} for t, d in rows]
     except Exception:
         pass
-    # Fallback : lit les keyframes complètes
     rows = conn.execute("SELECT tick, data_blob FROM keyframes ORDER BY tick").fetchall()
     conn.close()
     result = []
@@ -562,6 +703,221 @@ async def api_stats(request):
     return web.json_response(data)
 
 
+def _read_genetics(db: str, tick: int, species: str) -> dict:
+    """Calcule diversité génétique depuis la keyframe la plus proche."""
+    from simulation.recording.replay import ReplayReader
+    from entities.genetics import Genome, N_GENES
+    import math
+    reader = ReplayReader(Path(db))
+    snap   = reader.state_at(tick)
+    reader.close()
+    if snap is None:
+        return {"diversity_index": 0.0, "gene_means": [0.0]*N_GENES,
+                "gene_stds": [0.0]*N_GENES}
+    genomes = []
+    for e in snap.individuals:
+        if not e.alive:
+            continue
+        if species and e.species != species:
+            continue
+        gj = getattr(e, "genome_json", "")
+        if gj:
+            genomes.append(Genome.from_json(gj).genes)
+    if not genomes:
+        return {"diversity_index": 0.0, "gene_means": [0.0]*N_GENES,
+                "gene_stds": [0.0]*N_GENES}
+    n = len(genomes)
+    means = [sum(g[i] for g in genomes) / n for i in range(N_GENES)]
+    stds  = [
+        math.sqrt(sum((g[i] - means[i])**2 for g in genomes) / n)
+        for i in range(N_GENES)
+    ]
+    diversity = sum(stds) / N_GENES
+    return {"diversity_index": round(diversity, 4),
+            "gene_means": [round(m, 4) for m in means],
+            "gene_stds":  [round(s, 4) for s in stds]}
+
+
+async def api_genetics(request):
+    """GET /api/replay/genetics?db=...&tick=...&species=..."""
+    db      = request.rel_url.query.get("db", "")
+    tick    = int(request.rel_url.query.get("tick", 0))
+    species = request.rel_url.query.get("species", "")
+    if not db or not Path(db).exists():
+        raise web.HTTPNotFound()
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, _read_genetics, db, tick, species)
+    return web.json_response(data)
+
+
+def _read_epidemic(db: str) -> dict:
+    """Épidémiologie complète : courbes, R₀, par espèce, métadonnées d'infection."""
+    import sqlite3
+    from collections import Counter
+    conn = sqlite3.connect(db, check_same_thread=False)
+
+    meta = dict(conn.execute("SELECT key, value FROM meta").fetchall())
+    infect_meta: dict = {}
+    if meta.get("infect_disease"):
+        infect_meta = {
+            "disease":    meta.get("infect_disease", ""),
+            "source_tick": int(meta.get("infect_tick", 0)),
+            "source_db":   meta.get("infect_source", ""),
+        }
+
+    inf_events:   list[dict] = []
+    death_events: list[dict] = []
+    try:
+        for (tick, eid, payload_str) in conn.execute(
+                "SELECT tick, entity_id, payload FROM events "
+                "WHERE kind='disease_infection' ORDER BY tick"):
+            p = json.loads(payload_str)
+            inf_events.append({
+                "tick": tick, "uid": eid, "type": "infection",
+                "disease": p.get("disease_name", "?"),
+                "species": p.get("species", "?"),
+                "source_uid": p.get("source_uid", -1),
+            })
+        for (tick, eid, payload_str) in conn.execute(
+                "SELECT tick, entity_id, payload FROM events "
+                "WHERE kind='disease_death' ORDER BY tick"):
+            p = json.loads(payload_str)
+            death_events.append({
+                "tick": tick, "uid": eid, "type": "death",
+                "disease": p.get("disease_name", "?"),
+                "species": p.get("species", "?"),
+                "source_uid": -1,
+            })
+    except Exception:
+        pass
+    conn.close()
+
+    diseases   = sorted({e["disease"] for e in inf_events + death_events})
+    cumulative = {d: sum(1 for e in inf_events   if e["disease"] == d) for d in diseases}
+    deaths     = {d: sum(1 for e in death_events if e["disease"] == d) for d in diseases}
+
+    BIN = 200
+    infections_by_tick: list[dict] = []
+    if inf_events:
+        min_t = inf_events[0]["tick"]
+        max_t = inf_events[-1]["tick"]
+        for b in range(min_t, max_t + BIN, BIN):
+            row: dict = {"tick": b}
+            for d in diseases:
+                row[d] = sum(1 for e in inf_events
+                             if e["disease"] == d and b <= e["tick"] < b + BIN)
+            infections_by_tick.append(row)
+
+    r0: dict = {}
+    for d in diseases:
+        sources = [e["source_uid"] for e in inf_events
+                   if e["disease"] == d and e["source_uid"] >= 0]
+        if sources:
+            c = Counter(sources)
+            r0[d] = round(sum(c.values()) / len(c), 2)
+
+    by_species: dict = {}
+    for e in inf_events:
+        by_species.setdefault(e["species"], {}).setdefault(e["disease"], 0)
+        by_species[e["species"]][e["disease"]] += 1
+
+    all_ev = sorted(inf_events + death_events, key=lambda x: x["tick"])
+    return {
+        "diseases":           diseases,
+        "total_infections":   sum(cumulative.values()),
+        "total_deaths":       sum(deaths.values()),
+        "cumulative":         cumulative,
+        "deaths":             deaths,
+        "r0":                 r0,
+        "infections_by_tick": infections_by_tick,
+        "by_species":         by_species,
+        "recent_events":      all_ev[-60:],
+        "infect_meta":        infect_meta,
+    }
+
+
+async def api_epidemic(request):
+    """GET /api/analyse/epidemic?db=..."""
+    db = request.rel_url.query.get("db", "")
+    if not db or not Path(db).exists():
+        raise web.HTTPNotFound()
+    loop = asyncio.get_event_loop()
+    data = await loop.run_in_executor(None, _read_epidemic, db)
+    return web.json_response(data)
+
+
+def _export_csv(db: str) -> str:
+    """Exporte les timeseries en CSV."""
+    import csv, io
+    ts   = _read_timeseries(db)
+    buf  = io.StringIO()
+    all_sp = sorted({sp for row in ts for sp in row["counts"]})
+    w = csv.writer(buf)
+    w.writerow(["tick"] + all_sp)
+    for row in ts:
+        w.writerow([row["tick"]] + [row["counts"].get(sp, 0) for sp in all_sp])
+    return buf.getvalue()
+
+
+async def api_export(request):
+    """GET /api/runs/{run_id}/export?format=csv|json"""
+    run_id = request.match_info.get("run_id", "")
+    fmt    = request.rel_url.query.get("format", "csv")
+    db_path = None
+    if _RUNS_D.exists():
+        for p in _RUNS_D.glob("*.db"):
+            if _quick_meta(str(p), "run_id") == run_id:
+                db_path = str(p)
+                break
+    if db_path is None:
+        raise web.HTTPNotFound()
+    loop = asyncio.get_event_loop()
+    if fmt == "csv":
+        csv_data = await loop.run_in_executor(None, _export_csv, db_path)
+        return web.Response(body=csv_data, content_type="text/csv",
+                            headers={"Content-Disposition":
+                                     f'attachment; filename="run_{run_id}.csv"'})
+    ts = await loop.run_in_executor(None, _read_timeseries, db_path)
+    return web.json_response(ts)
+
+
+def _render_heatmap_png(db: str, tick: int, species: str,
+                         out_w: int = 300, out_h: int = 300) -> bytes:
+    """PNG heatmap de densité pour une espèce à un tick donné."""
+    from simulation.recording.replay import ReplayReader
+    from web.renderer import render_heatmap
+    from PIL import Image
+    import io
+    try:
+        reader  = ReplayReader(Path(db))
+        m       = reader.meta
+        world_w = int(m.get("world_width", 500))
+        world_h = int(m.get("world_height", 500))
+        snap    = reader.state_at(tick)
+        reader.close()
+        if snap is None:
+            raise ValueError("no snap")
+        return render_heatmap(snap, world_w, world_h, species, out_w, out_h)
+    except Exception:
+        img = Image.new("RGB", (out_w, out_h), (20, 20, 40))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+
+
+async def api_heatmap(request):
+    """GET /api/replay/heatmap?db=...&tick=...&species=..."""
+    db      = request.rel_url.query.get("db", "")
+    tick    = int(request.rel_url.query.get("tick", 0))
+    species = request.rel_url.query.get("species", "")
+    if not db or not Path(db).exists():
+        raise web.HTTPNotFound()
+    loop = asyncio.get_event_loop()
+    png  = await loop.run_in_executor(None, _render_heatmap_png, db, tick, species)
+    return web.Response(body=png, content_type="image/png",
+                        headers={"Cache-Control": "no-store"})
+
+
 # ── App factory + lancement ───────────────────────────────────────────────────
 
 def _build_app() -> web.Application:
@@ -569,20 +925,28 @@ def _build_app() -> web.Application:
     app.router.add_get ("/",                        handle_index)
     app.router.add_get ("/static/{path:.*}",        handle_static)
     app.router.add_get ("/api/species",             api_species)
+    app.router.add_get ("/api/diseases",            api_diseases)
     app.router.add_post("/api/terrain/preview",     api_terrain_preview)
     app.router.add_post("/api/sim/start",           api_sim_start)
     app.router.add_post("/api/sim/cancel",          api_sim_cancel)
+    app.router.add_post("/api/replay/infect",       api_replay_infect)
     app.router.add_get ("/api/runs",                api_runs)
     app.router.add_get ("/api/replay/meta",         api_replay_meta)
     app.router.add_get ("/api/replay/terrain",      api_replay_terrain)
     app.router.add_get ("/api/replay/frame_img",    api_frame_img)
     app.router.add_get ("/api/replay/frame_json",   api_frame_json)
     app.router.add_post("/api/replay/prerender",    api_prerender)
-    app.router.add_get ("/api/analyse/timeseries",  api_timeseries)
-    app.router.add_get ("/api/analyse/genealogy",   api_genealogy)
-    app.router.add_get ("/api/analyse/day_info",    api_day_info)
-    app.router.add_get ("/api/analyse/stats",       api_stats)
-    app.router.add_get ("/ws",                      websocket_handler)
+    app.router.add_get   ("/api/analyse/timeseries",    api_timeseries)
+    app.router.add_get   ("/api/analyse/genealogy",     api_genealogy)
+    app.router.add_get   ("/api/analyse/day_info",      api_day_info)
+    app.router.add_get   ("/api/analyse/stats",         api_stats)
+    app.router.add_get   ("/api/analyse/epidemic",      api_epidemic)
+    app.router.add_patch ("/api/runs/{run_id}/tag",     api_runs_tag)
+    app.router.add_get   ("/api/runs/compare",          api_runs_compare)
+    app.router.add_get   ("/api/runs/{run_id}/export",  api_export)
+    app.router.add_get   ("/api/replay/genetics",       api_genetics)
+    app.router.add_get   ("/api/replay/heatmap",        api_heatmap)
+    app.router.add_get   ("/ws",                        websocket_handler)
     return app
 
 
