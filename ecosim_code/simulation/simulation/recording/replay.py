@@ -22,6 +22,9 @@ class ReplayReader:
     def __init__(self, path: Path) -> None:
         self._path = path
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
+        # Migration automatique vers le schéma courant
+        from simulation.recording.migrations import migrate
+        migrate(self._conn)
         self._keyframe_ticks: list[int] = self._load_keyframe_ticks()
 
     def _load_keyframe_ticks(self) -> list[int]:

@@ -67,6 +67,16 @@ class EngineRunner:
             getattr(engine.death_log, "cause_counts", {})
         )
 
+        # Écrire le rapport de profiling dans les meta si activé
+        if getattr(engine, 'profiling', False) and self.recorder is not None:
+            import json
+            profile = engine.get_profile_report()
+            profile["elapsed_s"] = round(elapsed, 3)
+            profile["ticks"] = engine.tick_count - (target - max_ticks)
+            if profile["ticks"] > 0:
+                profile["ticks_per_s"] = round(profile["ticks"] / elapsed, 1)
+            self.recorder.write_meta("profiling", json.dumps(profile))
+
         return RunSummary(
             ticks_done=engine.tick_count - (target - max_ticks),
             elapsed_s=elapsed,

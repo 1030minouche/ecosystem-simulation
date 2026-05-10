@@ -11,11 +11,38 @@ if TYPE_CHECKING:
     from simulation.engine import SimulationEngine
 
 
+def load_engine_from_db_at_tick(db_path: Path, target_tick: int) -> "SimulationEngine":
+    """Comme load_engine_from_db mais charge la keyframe au plus proche de target_tick."""
+    import sqlite3
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute(
+        "SELECT tick FROM keyframes WHERE tick <= ? ORDER BY tick DESC LIMIT 1",
+        (target_tick,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return load_engine_from_db(db_path)
+    return _load_engine_from_row(db_path, row[0])
+
+
 def load_engine_from_db(db_path: Path) -> "SimulationEngine":
     """
     Reconstruit un SimulationEngine depuis la dernière keyframe d'un .db.
     Retourne le moteur prêt à tourner depuis le tick suivant.
     """
+    import sqlite3
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute(
+        "SELECT tick FROM keyframes ORDER BY tick DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    if row is None:
+        raise ValueError(f"Aucune keyframe trouvée dans {db_path}")
+    return _load_engine_from_row(db_path, row[0])
+
+
+def _load_engine_from_row(db_path: Path, tick: int) -> "SimulationEngine":
+    """Reconstruit le moteur depuis la keyframe au tick donné."""
     import sqlite3
     from world.grid import Grid
     from world.terrain import generate_terrain
@@ -24,6 +51,7 @@ def load_engine_from_db(db_path: Path) -> "SimulationEngine":
     from entities.plant import Plant
     from entities.genetics import Genome
     from entities.species import Species
+    from simulation.recording.schema import WorldSnapshot
 
     conn = sqlite3.connect(str(db_path))
     meta = dict(conn.execute("SELECT key, value FROM meta").fetchall())
@@ -35,10 +63,8 @@ def load_engine_from_db(db_path: Path) -> "SimulationEngine":
 
     grid = Grid(width=width, height=height)
     generate_terrain(grid, seed=seed, preset=preset)
-
     engine = SimulationEngine(grid, seed=seed)
 
-    # Reconstruire les espèces
     species_map: dict[str, Species] = {}
     species_json = meta.get("species_params", "[]")
     for sd in json.loads(species_json):
@@ -53,19 +79,16 @@ def load_engine_from_db(db_path: Path) -> "SimulationEngine":
         engine._registry.species_list.append(sp)
         engine._registry._species_counts[sp.name] = 0
 
-    # Charger la dernière keyframe
     row = conn.execute(
-        "SELECT tick, data_blob FROM keyframes ORDER BY tick DESC LIMIT 1"
+        "SELECT data_blob FROM keyframes WHERE tick=?", (tick,)
     ).fetchone()
     if row is None:
         conn.close()
-        raise ValueError(f"Aucune keyframe trouvée dans {db_path}")
+        raise ValueError(f"Keyframe au tick {tick} introuvable dans {db_path}")
 
-    from simulation.recording.schema import WorldSnapshot
-    snap = WorldSnapshot.from_blob(row[1])
+    snap = WorldSnapshot.from_blob(row[0])
     engine.tick_count = snap.tick
 
-    # Reconstruire les plantes
     for es in snap.plants:
         sp = species_map.get(es.species)
         if sp and es.alive:
@@ -77,7 +100,6 @@ def load_engine_from_db(db_path: Path) -> "SimulationEngine":
                 engine._registry._species_counts.get(sp.name, 0) + 1
             )
 
-    # Reconstruire les individus
     for es in snap.individuals:
         sp = species_map.get(es.species)
         if sp and es.alive:

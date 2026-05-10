@@ -70,18 +70,41 @@ def _compute_eco_metrics(engine) -> dict:
 
 
 class Recorder:
-    def __init__(self, path: Path, keyframe_every: int = 500,
-                 frame_renderer=None, append: bool = False) -> None:
+    def __init__(self, path: Path, keyframe_every: int = 1000,
+                 frame_renderer=None, append: bool = False,
+                 displacement_every: int = 5) -> None:
         """
-        frame_renderer : callable(engine, tick) -> bytes | None
-            Si fourni, appelé après chaque keyframe pour stocker un PNG pré-rendu.
-        append : si True, on ne recrée pas les tables et on repart du dernier tick connu.
+        frame_renderer     : callable(engine, tick) -> bytes | None
+        append             : si True, on ne recrée pas les tables et on repart du dernier tick connu.
+        keyframe_every     : ticks entre deux keyframes (défaut 1000 au lieu de 500
+                             pour réduire la croissance de la DB sur les runs longs).
+        displacement_every : n'écrire le déplacement que tous les N keyframes (défaut 5)
+                             pour limiter la taille de la table displacement.
         """
-        self.path            = path
-        self.keyframe_every  = keyframe_every
-        self._frame_renderer = frame_renderer
-        self._last_keyframe  = -1
+        self.path              = path
+        self.keyframe_every    = keyframe_every
+        self._displacement_every = max(1, displacement_every)
+        self._keyframe_count   = 0
+        self._frame_renderer   = frame_renderer
+        self._last_keyframe    = -1
+        # Buffers en mémoire — flush vers SQLite uniquement à chaque keyframe.
+        # Réduit les appels SQLite de O(ticks) à O(keyframes), crucial pour
+        # les runs longs où les populations explosent et génèrent des centaines
+        # de naissances par tick.
+        self._buf_events:    list = []   # rows pour events
+        self._buf_ind:       list = []   # rows pour individuals
+        self._buf_ped:       list = []   # rows pour pedigree
+        self._buf_lh_born:   list = []   # rows life_history à la naissance
+        self._buf_lh_dead:   list = []   # rows life_history à la mort
         self._conn           = sqlite3.connect(str(path))
+        # WAL mode : écriture 5–10× plus rapide sur des runs longs (pas de fsync par commit).
+        # synchronous=NORMAL : sécurisé contre les crashes OS, mais pas les coupures de courant.
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA cache_size=-8000")   # 8 Mo de cache page
+        self._conn.execute("PRAGMA temp_store=MEMORY")
+        # Cache en mémoire : born_tick par uid, évite un SELECT par mort à chaque tick.
+        self._born_ticks: dict[int, int] = {}
         if append:
             row = self._conn.execute(
                 "SELECT MAX(tick) FROM keyframes"
@@ -200,66 +223,82 @@ class Recorder:
 
     def on_tick_end(self, engine: "SimulationEngine") -> None:
         tick = engine.tick_count
-        # ── Naissances : events + individuals + pedigree ─────────────────────
-        for baby in getattr(engine, '_last_newborns', []):
-            uid      = getattr(baby, 'uid', -1)
-            pa_uid   = getattr(baby, 'parent_id', -1)
-            pb_uid   = getattr(baby, 'parent_b_id', -1)
-            self._conn.execute(
-                "INSERT OR IGNORE INTO events(tick, kind, entity_id, payload) VALUES (?,?,?,?)",
-                (tick, 'birth', uid, json.dumps({
-                    'parent_a_uid': pa_uid,
-                    'parent_b_uid': pb_uid,
-                    'species':      baby.species.name,
-                    'x':            round(baby.x, 2),
-                    'y':            round(baby.y, 2),
-                }, separators=(',', ':')))
-            )
-            self._conn.execute(
-                "INSERT OR IGNORE INTO individuals(uid, species, born_tick, parent_a_uid, parent_b_uid, sex) VALUES (?,?,?,?,?,?)",
-                (uid, baby.species.name, tick, pa_uid, pb_uid, getattr(baby, 'sex', '?'))
-            )
-            self._conn.execute(
-                "INSERT OR IGNORE INTO pedigree(uid, parent_a_uid, parent_b_uid) VALUES (?,?,?)",
-                (uid, pa_uid, pb_uid)
-            )
-        # ── Morts : life_history ──────────────────────────────────────────────
-        for ind in getattr(engine, '_last_dead', []):
-            uid   = getattr(ind, 'uid', -1)
-            n_tks = max(1, getattr(ind, '_energy_ticks', 1))
-            avg_e = round(getattr(ind, '_energy_sum', ind.energy) / n_tks, 3)
-            genome_j = (ind.genome.to_json()
-                        if hasattr(ind, 'genome') else "")
-            self._conn.execute(
-                "INSERT OR REPLACE INTO life_history"
-                "(uid, species, born_tick, death_tick, death_cause, n_offspring, lifetime_energy_avg, sex, genome_json)"
-                " VALUES (?,?,?,?,?,?,?,?,?)",
-                (uid, ind.species.name,
-                 tick - ind.age,  # approximation du tick de naissance
-                 tick,
-                 getattr(ind, 'death_cause', 'unknown'),
-                 getattr(ind, 'n_offspring', 0),
-                 avg_e,
-                 getattr(ind, 'sex', '?'),
-                 genome_j)
-            )
-        # ── Événements maladie ────────────────────────────────────────────────
-        for ev in getattr(engine, '_last_disease_events', []):
-            entity_id = ev.get("target_uid", -1)
-            self._conn.execute(
-                "INSERT INTO events(tick, kind, entity_id, payload) VALUES (?,?,?,?)",
-                (tick, ev["type"], entity_id, json.dumps({
-                    'disease_name': ev.get("disease", ""),
-                    'species':      ev.get("species", ""),
-                    'x':            ev.get("x", 0),
-                    'y':            ev.get("y", 0),
-                    'source_uid':   ev.get("source_uid", -1),
-                    'target_uid':   ev.get("target_uid", -1),
-                }, separators=(',', ':')))
-            )
+        # ── Naissances : accumulation en mémoire ──────────────────────────────
+        for baby in getattr(engine, '_last_newborns', ()):
+            uid    = getattr(baby, 'uid', -1)
+            pa_uid = getattr(baby, 'parent_id', -1)
+            pb_uid = getattr(baby, 'parent_b_id', -1)
+            sex    = getattr(baby, 'sex', '?')
+            self._born_ticks[uid] = tick
+            self._buf_events.append((tick, 'birth', uid, json.dumps({
+                'parent_a_uid': pa_uid, 'parent_b_uid': pb_uid,
+                'species': baby.species.name,
+                'x': round(baby.x, 2), 'y': round(baby.y, 2),
+            }, separators=(',', ':'))))
+            self._buf_ind.append((uid, baby.species.name, tick, pa_uid, pb_uid, sex))
+            self._buf_ped.append((uid, pa_uid, pb_uid))
+            self._buf_lh_born.append((uid, baby.species.name, tick, sex))
+
+        # ── Morts : accumulation en mémoire ───────────────────────────────────
+        for ind in getattr(engine, '_last_dead', ()):
+            uid       = getattr(ind, 'uid', -1)
+            n_tks     = max(1, getattr(ind, '_energy_ticks', 1))
+            avg_e     = round(getattr(ind, '_energy_sum', ind.energy) / n_tks, 3)
+            genome_j  = ind.genome.to_json() if hasattr(ind, 'genome') else ""
+            born_tick = self._born_ticks.pop(uid, tick - ind.age)
+            self._buf_lh_dead.append((
+                uid, ind.species.name, born_tick, tick,
+                getattr(ind, 'death_cause', 'unknown'),
+                getattr(ind, 'n_offspring', 0),
+                avg_e, getattr(ind, 'sex', '?'), genome_j,
+            ))
+
+        # ── Événements maladie : accumulation ────────────────────────────────
+        for ev in getattr(engine, '_last_disease_events', ()):
+            self._buf_events.append((tick, ev["type"], ev.get("target_uid", -1), json.dumps({
+                'disease_name': ev.get("disease", ""),
+                'species':      ev.get("species", ""),
+                'x':            ev.get("x", 0),
+                'y':            ev.get("y", 0),
+                'source_uid':   ev.get("source_uid", -1),
+                'target_uid':   ev.get("target_uid", -1),
+            }, separators=(',', ':'))))
+
+        # ── Flush vers SQLite uniquement à chaque keyframe ───────────────────
         if tick - self._last_keyframe >= self.keyframe_every:
+            self._flush_buffers()
             self._write_keyframe(engine, tick)
             self._last_keyframe = tick
+
+    def _flush_buffers(self) -> None:
+        """Vide les buffers mémoire vers SQLite en une seule transaction."""
+        if self._buf_events:
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO events(tick,kind,entity_id,payload) VALUES (?,?,?,?)",
+                self._buf_events)
+            self._buf_events.clear()
+        if self._buf_ind:
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO individuals(uid,species,born_tick,parent_a_uid,parent_b_uid,sex) VALUES (?,?,?,?,?,?)",
+                self._buf_ind)
+            self._buf_ind.clear()
+        if self._buf_ped:
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO pedigree(uid,parent_a_uid,parent_b_uid) VALUES (?,?,?)",
+                self._buf_ped)
+            self._buf_ped.clear()
+        if self._buf_lh_born:
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO life_history(uid,species,born_tick,sex) VALUES (?,?,?,?)",
+                self._buf_lh_born)
+            self._buf_lh_born.clear()
+        if self._buf_lh_dead:
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO life_history"
+                "(uid,species,born_tick,death_tick,death_cause,n_offspring,lifetime_energy_avg,sex,genome_json)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                self._buf_lh_dead)
+            self._buf_lh_dead.clear()
 
     def on_event(self, event: Event) -> None:
         self._conn.execute(
@@ -268,6 +307,8 @@ class Recorder:
         )
 
     def close(self) -> None:
+        # Flush les buffers mémoire restants avant de fermer
+        self._flush_buffers()
         self._conn.commit()
         self._conn.close()
 
@@ -317,8 +358,13 @@ class Recorder:
              json.dumps(eco, separators=(',', ':'))),
         )
         # ── Displacement (métriques comportementales) ──────────────────────────
+        # N'écrit le déplacement que tous les _displacement_every keyframes
+        # pour limiter la croissance de la table sur les runs longs.
+        self._keyframe_count += 1
         prev = getattr(self, '_prev_positions', {})
         new_prev = {}
+        write_displacement = (self._keyframe_count % self._displacement_every == 0)
+        disp_rows = []
         for ind in engine.individuals:
             uid = getattr(ind, 'uid', None)
             if uid is None:
@@ -327,11 +373,14 @@ class Recorder:
             dist = getattr(ind, '_cumulative_distance', 0.0) + ((ind.x - px)**2 + (ind.y - py)**2)**0.5
             ind._cumulative_distance = dist
             new_prev[uid] = (ind.x, ind.y)
-            self._conn.execute(
-                "INSERT OR REPLACE INTO displacement(uid, tick, x, y, cumulative_distance) VALUES (?,?,?,?,?)",
-                (uid, tick, round(ind.x, 2), round(ind.y, 2), round(dist, 3))
-            )
+            if write_displacement:
+                disp_rows.append((uid, tick, round(ind.x, 2), round(ind.y, 2), round(dist, 3)))
         self._prev_positions = new_prev
+        if disp_rows:
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO displacement(uid,tick,x,y,cumulative_distance) VALUES (?,?,?,?,?)",
+                disp_rows,
+            )
 
         # PNG pré-rendu (si renderer fourni)
         if self._frame_renderer is not None:

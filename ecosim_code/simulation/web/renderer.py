@@ -82,14 +82,54 @@ def _draw_entities(arr: np.ndarray,
         )
         arr[ys, xs] = col
 
-    # Animaux — dot 5×5
+    # Animaux — dot 5×5 (halo orange si infecté)
     for ind in individuals:
         if not getattr(ind, "alive", True):
             continue
         col = colors.get(get_species_name(ind), (255, 165, 0))
         cx = int(np.clip(round(ind.x * sx), 2, out_w - 3))
         cy = int(np.clip(round(ind.y * sy), 2, out_h - 3))
+        if getattr(ind, "is_infectious", False):
+            hx0 = max(0, cx - 3); hx1 = min(out_w, cx + 4)
+            hy0 = max(0, cy - 3); hy1 = min(out_h, cy + 4)
+            arr[hy0:hy1, hx0:hx1] = (180, 80, 0)
         arr[cy - 2:cy + 3, cx - 2:cx + 3] = col
+
+
+def render_heatmap(snap, world_w: int, world_h: int, species: str,
+                   out_w: int = 300, out_h: int = 300) -> bytes:
+    """Heatmap de densité KDE pour une espèce à partir d'un WorldSnapshot → PNG bytes."""
+    from PIL import Image
+    import io as _io
+
+    xs = np.array([e.x for e in snap.individuals if e.alive and e.species == species], dtype=np.float32)
+    ys = np.array([e.y for e in snap.individuals if e.alive and e.species == species], dtype=np.float32)
+
+    try:
+        from scipy.stats import gaussian_kde
+        has_scipy = True
+    except ImportError:
+        has_scipy = False
+
+    if len(xs) < 3 or not has_scipy:
+        img = Image.new("RGB", (out_w, out_h), (20, 20, 40))
+    else:
+        gx = np.linspace(0, world_w, out_w)
+        gy = np.linspace(0, world_h, out_h)
+        gxx, gyy = np.meshgrid(gx, gy)
+        positions = np.vstack([gxx.ravel(), gyy.ravel()])
+        values    = np.vstack([xs, ys])
+        kde       = gaussian_kde(values, bw_method=0.15)
+        density   = kde(positions).reshape(out_h, out_w)
+        density   = density / density.max()
+        rgb = np.zeros((out_h, out_w, 3), dtype=np.uint8)
+        rgb[..., 0] = (density * 255).astype(np.uint8)
+        rgb[..., 1] = (density * 120).astype(np.uint8)
+        img = Image.fromarray(rgb, "RGB")
+
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def arr_to_png(arr: np.ndarray) -> bytes:

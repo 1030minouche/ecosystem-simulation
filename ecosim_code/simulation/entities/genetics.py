@@ -15,7 +15,8 @@ from entities.rng import rng
 if TYPE_CHECKING:
     from entities.species import Species
 
-N_GENES = 8
+N_GENES         = 8   # gènes à effet phénotypique
+N_NEUTRAL_GENES = 20  # gènes neutres (sans effet, pour mesurer la dérive)
 
 # Mapping indice → paramètre modulé (facteur : base × (1 + gene × GENE_INFLUENCE))
 GENE_TRAITS = [
@@ -32,13 +33,20 @@ GENE_TRAITS = [
 GENE_INFLUENCE = 0.30
 
 
+_TOTAL_GENES = N_GENES + N_NEUTRAL_GENES
+
+
 @dataclass
 class Genome:
-    genes: list[float] = field(default_factory=lambda: [0.0] * N_GENES)
+    genes:         list[float] = field(default_factory=lambda: [0.0] * N_GENES)
+    neutral_genes: list[float] = field(default_factory=lambda: [0.0] * N_NEUTRAL_GENES)
 
     @classmethod
     def random(cls) -> "Genome":
-        return cls(genes=[rng.uniform(-1.0, 1.0) for _ in range(N_GENES)])
+        return cls(
+            genes         = [rng.uniform(-1.0, 1.0) for _ in range(N_GENES)],
+            neutral_genes = [rng.uniform(-1.0, 1.0) for _ in range(N_NEUTRAL_GENES)],
+        )
 
     @classmethod
     def from_parents(cls, parent_a: "Genome", parent_b: "Genome",
@@ -51,7 +59,15 @@ class Genome:
                 gene += rng.gauss(0.0, 0.15)
                 gene = max(-1.0, min(1.0, gene))
             child_genes.append(gene)
-        return cls(genes=child_genes)
+        # Gènes neutres : même recombinaison, mutation légèrement plus élevée
+        child_neutral = []
+        for a, b in zip(parent_a.neutral_genes, parent_b.neutral_genes):
+            gene = a if rng.random() < 0.5 else b
+            if rng.random() < mutation_rate * 1.5:
+                gene += rng.gauss(0.0, 0.10)
+                gene = max(-1.0, min(1.0, gene))
+            child_neutral.append(gene)
+        return cls(genes=child_genes, neutral_genes=child_neutral)
 
     def apply_to_params(self, base_params: dict) -> dict:
         """Retourne une copie des params avec les modifications génétiques."""
@@ -75,8 +91,18 @@ class Genome:
         return cls(genes=list(lst))
 
     def to_json(self) -> str:
-        return json.dumps(self.genes)
+        return json.dumps({"g": self.genes, "n": self.neutral_genes})
 
     @classmethod
     def from_json(cls, s: str) -> "Genome":
-        return cls(genes=json.loads(s))
+        if not s:
+            return cls.random()
+        data = json.loads(s)
+        if isinstance(data, list):
+            # rétrocompatibilité : ancien format sans gènes neutres
+            return cls(genes=data,
+                       neutral_genes=[0.0] * N_NEUTRAL_GENES)
+        return cls(
+            genes         = data.get("g", [0.0] * N_GENES),
+            neutral_genes = data.get("n", [0.0] * N_NEUTRAL_GENES),
+        )

@@ -136,5 +136,7 @@ class TestSerialization:
         rng.reset(22)
         g = Genome.random()
         parsed = json.loads(g.to_json())
-        assert isinstance(parsed, list)
-        assert len(parsed) == N_GENES
+        # Format actuel : {"g": [...], "n": [...]}
+        assert isinstance(parsed, dict)
+        assert "g" in parsed and "n" in parsed
+        assert len(parsed["g"]) == N_GENES

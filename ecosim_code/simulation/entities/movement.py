@@ -10,6 +10,8 @@ Regroupe toutes les méthodes liées au mouvement :
 
 import math
 
+import numpy as np
+
 from entities.activity import TICKS_PER_SECOND
 from entities.rng import rng
 
@@ -36,15 +38,18 @@ class MovementMixin:
                 self.explore_x = rng.uniform(2, grid.width  - 3)
                 self.explore_y = rng.uniform(2, grid.height - 3)
             else:
-                for _ in range(15):
-                    ex = rng.uniform(2, grid.width  - 3)
-                    ey = rng.uniform(2, grid.height - 3)
+                # Vectorisation NumPy : génère 15 candidats en une seule passe
+                ex_arr = rng._g.uniform(2, grid.width  - 3, 15)
+                ey_arr = rng._g.uniform(2, grid.height - 3, 15)
+                found = False
+                for ex, ey in zip(ex_arr, ey_arr):
                     if grid.soil_type[int(ey), int(ex)] != "water":
-                        self.explore_x, self.explore_y = ex, ey
+                        self.explore_x, self.explore_y = float(ex), float(ey)
+                        found = True
                         break
-                else:
-                    self.explore_x = rng.uniform(2, grid.width  - 3)
-                    self.explore_y = rng.uniform(2, grid.height - 3)
+                if not found:
+                    self.explore_x = float(ex_arr[0])
+                    self.explore_y = float(ey_arr[0])
 
         # ── Cohésion de troupeau ──────────────────────────────────────────────
         # Biaise la cible d'exploration vers le centroïde pré-calculé par le moteur.

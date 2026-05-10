@@ -297,11 +297,70 @@ class SetupFrame(tk.Frame):
         )
         sp_box.pack(side=tk.LEFT)
 
+        # Bouton édition paramètres
+        tk.Button(
+            row, text="⚙", command=lambda s=sp: self._open_species_params_editor(s),
+            bg=C_CARD, fg=C_SUB, relief=tk.FLAT, font=app.font("small"),
+            cursor="hand2", padx=4, activebackground=C_BORDER,
+        ).pack(side=tk.LEFT, padx=(4, 0))
+
         self._species_vars[sp["name"]] = {
             "enabled": enabled_var,
             "count":   count_var,
             "data":    sp,
         }
+
+    def _open_species_params_editor(self, sp: dict) -> None:
+        """Ouvre une fenêtre modale pour modifier les paramètres clés d'une espèce."""
+        params = sp["params"]
+        app    = self._app
+
+        win = tk.Toplevel(app.root)
+        win.title(f"Paramètres — {sp['name']}")
+        win.configure(bg=C_BG)
+        win.resizable(False, False)
+        win.grab_set()
+
+        tk.Label(win, text=f"Espèce : {sp['name']}", font=app.font("body"),
+                 bg=C_BG, fg=C_TEXT).pack(pady=(12, 4))
+
+        fields = [
+            ("reproduction_rate",    "Taux reproduction",     0.0, 1.0,   0.01),
+            ("max_speed",            "Vitesse max",           0.5, 10.0,  0.1),
+            ("perception_radius",    "Rayon perception",      2.0, 30.0,  0.5),
+            ("max_energy",           "Énergie max",          50.0, 500.0, 5.0),
+            ("mutation_rate",        "Taux mutation",         0.0, 0.5,   0.005),
+            ("disease_resistance",   "Résistance maladie",   0.0, 1.0,   0.01),
+        ]
+
+        vars_: dict[str, tk.DoubleVar] = {}
+        for key, label, lo, hi, step in fields:
+            val = float(params.get(key, (lo + hi) / 2))
+            var = tk.DoubleVar(value=val)
+            vars_[key] = var
+
+            row = tk.Frame(win, bg=C_BG)
+            row.pack(fill=tk.X, padx=16, pady=3)
+            tk.Label(row, text=label, width=22, anchor="w",
+                     bg=C_BG, fg=C_TEXT, font=app.font("small")).pack(side=tk.LEFT)
+            tk.Scale(row, variable=var, from_=lo, to=hi, resolution=step,
+                     orient=tk.HORIZONTAL, length=200,
+                     bg=C_CARD, fg=C_TEXT, troughcolor=C_BORDER,
+                     highlightthickness=0, showvalue=True).pack(side=tk.LEFT)
+
+        def _apply():
+            for key, var in vars_.items():
+                params[key] = round(var.get(), 4)
+            win.destroy()
+
+        btn_row = tk.Frame(win, bg=C_BG)
+        btn_row.pack(pady=10)
+        tk.Button(btn_row, text="Appliquer", command=_apply,
+                  bg=C_ACCENT, fg=C_BG, relief=tk.FLAT,
+                  font=app.font("body"), padx=12).pack(side=tk.LEFT, padx=6)
+        tk.Button(btn_row, text="Annuler", command=win.destroy,
+                  bg=C_CARD, fg=C_TEXT, relief=tk.FLAT,
+                  font=app.font("body"), padx=12).pack(side=tk.LEFT, padx=6)
 
     # ── Prévisualisation terrain ──────────────────────────────────────────────
 

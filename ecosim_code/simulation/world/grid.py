@@ -41,6 +41,8 @@ class Grid:
         self.humidity    = np.zeros((height, width))
         self.water_depth = np.zeros((height, width))
         self.soil_type   = np.full((height, width), "clay", dtype=object)
+        # Cycle des nutriments : richesse du sol [0, 1] (1 = très fertile)
+        self.nutrients   = np.ones((height, width), dtype=np.float32)
 
     def cell_at(self, x: int, y: int) -> Cell:
         """Construit un Cell temporaire depuis les tableaux numpy (lecture seule)."""

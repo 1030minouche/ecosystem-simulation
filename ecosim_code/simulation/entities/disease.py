@@ -62,6 +62,8 @@ class DiseaseState:
     status: str = "susceptible"   # susceptible | exposed | infected | recovered
     ticks_in_state: int = 0
     source_id: int = -1
+    # Vitesse originale sauvegardée lors de l'entrée en phase infectée
+    original_max_speed: float = 0.0
 
     def tick(self, individual: "Individual", spec: DiseaseSpec) -> str:
         """Avance d'un tick. Retourne 'alive' ou 'dead'."""
@@ -74,12 +76,24 @@ class DiseaseState:
                 self.ticks_in_state = 0
 
         elif self.status == "infected":
+            # Premier tick infecté : sauvegarder et appliquer la pénalité de vitesse
+            if self.ticks_in_state == 1 and spec.speed_penalty < 1.0:
+                self.original_max_speed = individual._effective_params.get(
+                    "max_speed", individual.species.speed
+                )
+                individual._effective_params["max_speed"] = (
+                    self.original_max_speed * spec.speed_penalty
+                )
             resistance = individual._effective_params.get("disease_resistance", 0.5)
             individual.energy -= spec.energy_drain * (1.0 - resistance * 0.5)
             mort_chance = spec.mortality_chance * (1.0 - resistance)
             if rng.random() < mort_chance:
                 return "dead"
             if self.ticks_in_state >= spec.infectious_ticks:
+                # Restaurer la vitesse avant la transition
+                if self.original_max_speed > 0.0:
+                    individual._effective_params["max_speed"] = self.original_max_speed
+                    self.original_max_speed = 0.0
                 if spec.immunity_ticks > 0:
                     self.status = "recovered"
                 else:

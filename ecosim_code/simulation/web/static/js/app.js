@@ -99,11 +99,16 @@ function showTab(name) {
   if (name === 'graphs' && timeseriesData === null && analyseDb) {
     loadTimeseries();
   }
-  if (name === 'days' && timeseriesData === null && analyseDb) {
-    loadTimeseries().then(() => renderDayChart());
+  if (name === 'days' && analyseDb) {
+    if (timeseriesData === null) {
+      loadTimeseries().then(() => renderDayChart());
+    } else {
+      renderDayChart();
+    }
   }
-  if (name === 'disease' && epidemicData === null && analyseDb) {
-    loadEpidemic();
+  if (name === 'disease' && analyseDb) {
+    if (epidemicData === null) loadEpidemic();
+    else renderEpidemicDashboard(epidemicData);
   }
 }
 

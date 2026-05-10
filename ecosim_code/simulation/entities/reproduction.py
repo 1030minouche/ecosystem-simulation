@@ -48,7 +48,7 @@ def _spawn_offspring(parent, grid, species, energy_factor: float = 0.5,
         sex=rng.choice(["male", "female"]),
         wander_angle=rng.uniform(0, 2 * math.pi),
         home_x=bx, home_y=by,
-        parent_id=id(parent),
+        parent_id=getattr(parent, "uid", -1),
     )
 
 
@@ -58,20 +58,27 @@ class ReproductionMixin:
 
     def _deliver(self, grid) -> list:
         baby_sp = self.gestation_species or self.species
+        partner = getattr(self, "_gestation_partner", None)
         babies = []
         for _ in range(self.gestation_count):
             baby = _spawn_offspring(self, grid, baby_sp, energy_factor=0.5, spread=2.0)
+            baby.parent_b_id = getattr(partner, "uid", -1) if partner else -1
             _inherit_genome(self, baby)
             babies.append(baby)
-        self.gestation_count   = 0
-        self.gestation_species = None
+        self.n_offspring += len(babies)
+        if partner is not None:
+            partner.n_offspring += len(babies)
+        self.gestation_count    = 0
+        self.gestation_species  = None
+        self._gestation_partner = None
         return babies
 
     # ── Tentative de reproduction ─────────────────────────────────────────────
 
     def _try_reproduce(self, all_individuals, grid, n_predators: int = 0) -> list:
-        nearest_partner = None
-        min_dist2 = (self.species.perception_radius * 3.0) ** 2
+        # Collecte les partenaires candidats dans le rayon de perception
+        candidates = []
+        search_r2 = (self.species.perception_radius * 3.0) ** 2
 
         for other in all_individuals:
             if not other.alive or other is self:
@@ -82,20 +89,24 @@ class ReproductionMixin:
                 continue
             if other.reproduction_cooldown > 0 or other.gestation_timer > 0:
                 continue
-            # Le partenaire doit aussi être mature
             if (self.species.sexual_maturity_ticks > 0
                     and other.age < self.species.sexual_maturity_ticks):
                 continue
             dx = other.x - self.x
             dy = other.y - self.y
             d2 = dx*dx + dy*dy
-            if d2 < min_dist2:
-                min_dist2 = d2
-                nearest_partner = other
+            if d2 < search_r2:
+                candidates.append((d2, other))
 
-        if nearest_partner is None:
+        if not candidates:
             self._wander(grid)
             return []
+
+        # Sélection sexuelle : choisir le partenaire avec l'énergie la plus élevée
+        # parmi les 3 plus proches (réalisme + coût de recherche limité)
+        candidates.sort(key=lambda t: t[0])
+        top3 = [c[1] for c in candidates[:3]]
+        nearest_partner = max(top3, key=lambda o: o.energy)
 
         # Se déplacer vers le partenaire
         dx   = nearest_partner.x - self.x
@@ -143,8 +154,11 @@ class ReproductionMixin:
             newborns = []
             for _ in range(litter):
                 baby = _spawn_offspring(self, grid, baby_sp, energy_factor=0.6, spread=1.0)
+                baby.parent_b_id = getattr(nearest_partner, "uid", -1)
                 _inherit_genome(self, baby, partner=nearest_partner)
                 newborns.append(baby)
+            self.n_offspring += litter
+            nearest_partner.n_offspring += litter
             self.reproduction_cooldown            = self.species.reproduction_cooldown_length
             nearest_partner.reproduction_cooldown = self.species.reproduction_cooldown_length
             return newborns

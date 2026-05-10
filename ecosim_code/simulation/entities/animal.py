@@ -17,6 +17,7 @@ entities.activity pour rester importables depuis ce module (compatibilité
 avec les tests existants).
 """
 
+import math as _math
 from dataclasses import dataclass, field
 from entities.base import Entity
 from entities.activity import _is_resting, _is_pre_rest  # noqa: F401 — ré-export
@@ -45,29 +46,44 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
     home_x: float = -1.0
     home_y: float = -1.0
 
-    # Généalogie : ID Python de la mère (-1 = fondateur, spawn initial)
+    # Généalogie : uid permanent du parent (-1 = fondateur)
     parent_id: int = -1
+    parent_b_id: int = -1  # second parent (reproduction sexuée)
 
     # Maladies — état épidémiologique par pathogène
     disease_states: dict = field(default_factory=dict)
 
+    # ── Compteur de classe pour UIDs permanents ───────────────────────────────
+    _uid_counter: int = 0  # réinitialisé par le moteur à chaque nouvelle simulation
+
     # ── Génome ────────────────────────────────────────────────────────────────
 
     def __post_init__(self):
+        Individual._uid_counter += 1
+        self.uid: int = Individual._uid_counter
         self.genome: Genome = Genome.random()
         self._effective_params: dict = {}
         self._refresh_effective_params()
+        # Stats de vie (pour life_history)
+        self._energy_sum: float = self.energy
+        self._energy_ticks: int = 1
+        self.n_offspring: int = 0
 
     def _refresh_effective_params(self) -> None:
+        # Dimorphisme sexuel : facteur de vitesse et longévité selon le sexe
+        is_male = (self.sex == "male")
+        speed_factor  = self.species.male_speed_factor if is_male else self.species.female_speed_factor
+        longevity_fac = self.species.male_max_age_factor if is_male else self.species.female_max_age_factor
+
         base = {
-            "max_speed":          self.species.speed,
+            "max_speed":          self.species.speed * speed_factor,
             "max_energy":         self.species.energy_start,
             "energy_per_food":    self.species.energy_from_food,
             "reproduction_rate":  self.species.reproduction_rate,
             "perception_radius":  self.species.perception_radius,
             "aggression":         getattr(self.species, "aggression", 0.5),
             "disease_resistance": getattr(self.species, "disease_resistance", 0.5),
-            "longevity":          getattr(self.species, "max_age", 5000),
+            "longevity":          self.species.max_age * longevity_fac,
         }
         self._effective_params = self.genome.apply_to_params(base)
 
@@ -81,6 +97,8 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
         self.age += 1
         if self.reproduction_cooldown > 0:
             self.reproduction_cooldown -= 1
+        self._energy_sum += self.energy
+        self._energy_ticks += 1
 
         newborns = []
 
@@ -108,7 +126,20 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
         else:
             self.energy -= self.species.energy_consumption
 
-        if self.age >= self.species.max_age or self.energy <= 0:
+        # Mortalité Gompertz (sénescence progressive) + limite dure max_age
+        max_age = self.species.max_age
+        if self.age >= max_age:
+            self._annotate_death(grid, resting, time_of_day)
+            return newborns
+        if self.species.gompertz_a > 0 and self.age > max_age * 0.5:
+            p_death = self.species.gompertz_a * _math.exp(
+                self.species.gompertz_b * self.age / max_age
+            )
+            if rng.random() < p_death:
+                mark_dead(self, "senescence", grid, time_of_day,
+                          is_night=_is_resting(time_of_day, self.species.activity_pattern))
+                return newborns
+        if self.energy <= 0:
             self._annotate_death(grid, resting, time_of_day)
             return newborns
 

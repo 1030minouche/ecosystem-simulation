@@ -98,10 +98,10 @@ class TestDiseaseState:
 class TestTryInfect:
 
     def test_infect_within_radius(self):
-        rng.reset(1)
+        # disease_resistance=0 → effective_rate=1.0, résultat déterministe
         spec = _make_spec(transmission_rate=1.0, transmission_radius=10.0)
-        source = _make_individual(x=0.0, y=0.0)
-        target = _make_individual(x=3.0, y=4.0)  # distance=5
+        source = _make_individual(x=0.0, y=0.0, disease_resistance=0.0)
+        target = _make_individual(x=3.0, y=4.0, disease_resistance=0.0)  # distance=5
         source.disease_states["test_disease"] = DiseaseState(
             disease_name="test_disease", status="infected"
         )

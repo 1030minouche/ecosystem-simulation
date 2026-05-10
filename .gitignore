@@ -15,7 +15,7 @@ ecosim_code/simulation/reports/
 
 # ── Divers ────────────────────────────────────────────────────────────────────
 ecosim_code/TODO.txt
-.claude/settings.local.json
+.claude/
 analyse_code.md
 reprise.txt
 optimisation.md
