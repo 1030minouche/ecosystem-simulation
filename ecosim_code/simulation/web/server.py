@@ -296,13 +296,17 @@ async def api_diseases(request):
 
 async def api_replay_infect(request):
     """POST /api/replay/infect — démarre une simulation à partir d'un tick
-    en infectant l'entité la plus proche du point cliqué."""
+    en infectant une ou plusieurs entités.
+
+    Body accepté (deux formats) :
+      - Cible unique  : {species, x, y, ...}
+      - Cibles multi : {targets: [{species, x, y}, ...], ...}
+
+    Champs communs : db, tick, disease_name, more_ticks.
+    """
     body        = await request.json()
     db          = body.get("db", "")
     tick        = int(body.get("tick", 0))
-    species     = body.get("species", "")
-    entity_x    = float(body.get("x", 0))
-    entity_y    = float(body.get("y", 0))
     disease     = body.get("disease_name", "")
     more_ticks  = int(body.get("more_ticks", 5000))
 
@@ -311,18 +315,37 @@ async def api_replay_infect(request):
     if not disease:
         return web.json_response({"ok": False, "error": "maladie manquante"}, status=400)
 
+    raw_targets = body.get("targets")
+    if isinstance(raw_targets, list) and raw_targets:
+        targets = [
+            {
+                "species": str(t.get("species", "")),
+                "x":       float(t.get("x", 0)),
+                "y":       float(t.get("y", 0)),
+            }
+            for t in raw_targets
+        ]
+    else:
+        targets = [{
+            "species": str(body.get("species", "")),
+            "x":       float(body.get("x", 0)),
+            "y":       float(body.get("y", 0)),
+        }]
+
     config = {
         "mode":         "infect",
         "db_path":      db,
         "tick":         tick,
-        "species":      species,
-        "entity_x":     entity_x,
-        "entity_y":     entity_y,
+        "targets":      targets,
+        # Champs unique conservés pour compat (le manager privilégie `targets`)
+        "species":      targets[0]["species"],
+        "entity_x":     targets[0]["x"],
+        "entity_y":     targets[0]["y"],
         "disease_name": disease,
         "ticks":        more_ticks,
     }
     ok = _mgr.start(config)
-    return web.json_response({"ok": ok, "already_running": not ok})
+    return web.json_response({"ok": ok, "already_running": not ok, "n_targets": len(targets)})
 
 
 async def api_sim_start(request):
