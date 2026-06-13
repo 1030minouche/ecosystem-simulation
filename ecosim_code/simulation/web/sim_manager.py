@@ -5,9 +5,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class SimulationManager:
@@ -30,8 +33,8 @@ class SimulationManager:
         for ws in list(self._clients):
             try:
                 asyncio.run_coroutine_threadsafe(ws.send_str(txt), self._loop)
-            except Exception:
-                pass
+            except (RuntimeError, ConnectionError) as exc:
+                logger.debug("swallowed: %s", exc)
 
     # ── Simulation ────────────────────────────────────────────────────────────
 
@@ -226,7 +229,8 @@ class SimulationManager:
             else:
                 self._push({"type": "done", "db_path": str(out_path).replace("\\", "/")})
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — TODO préciser (worker thread générique)
             import traceback
+            logger.warning("Erreur worker simulation: %s", exc)
             self._push({"type": "error", "message": str(exc),
                         "trace": traceback.format_exc()})

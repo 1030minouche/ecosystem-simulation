@@ -3,9 +3,12 @@ EcoSim — Fenêtre principale (SETUP → RUNNING → REPLAY).
 """
 from __future__ import annotations
 
+import logging
 import threading
 import tkinter as tk
 from tkinter import font as tkfont
+
+logger = logging.getLogger(__name__)
 
 WIN_W = 1100
 WIN_H = 720
@@ -133,7 +136,8 @@ class EcoSimApp:
             if not run_frame.cancelled:
                 self.root.after(0, run_frame.on_done, str(out_path))
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — TODO préciser (worker thread générique)
+            logger.warning("Erreur worker run_simulation: %s", exc)
             self.root.after(0, run_frame.on_error, str(exc))
 
     # ── Replay ────────────────────────────────────────────────────────────────

@@ -13,11 +13,14 @@ from __future__ import annotations
 
 import glob
 import json
+import logging
 import math
 import os
 import threading
 import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -145,8 +148,8 @@ class ReplayFrame(tk.Frame):
                 r, g, b = [int(c * 255) for c in data["params"]["color"]]
                 self._sp_color_hex[name] = f"#{r:02x}{g:02x}{b:02x}"
                 self._sp_color_arr[name] = np.array([r, g, b], dtype=np.uint8)
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+                logger.debug("swallowed: %s (%s)", exc, path)
 
     def _color_hex(self, name: str) -> str:
         if name not in self._sp_color_hex:
@@ -709,8 +712,8 @@ class ReplayFrame(tk.Frame):
         if self._play_job:
             try:
                 self.after_cancel(self._play_job)
-            except Exception:
-                pass
+            except tk.TclError as exc:
+                logger.debug("swallowed: %s", exc)
             self._play_job = None
         self._play_btn.config(text="▶", bg=C_ACCENT)
 

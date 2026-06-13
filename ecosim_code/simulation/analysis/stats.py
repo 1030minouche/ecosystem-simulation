@@ -61,7 +61,7 @@ def aggregate_replicates(db_paths: list[Path | str],
             series = _read_counts_v2(Path(p))
             if series:
                 all_series.append(series)
-        except Exception as e:
+        except (sqlite3.Error, OSError, json.JSONDecodeError) as e:
             logger.warning("[stats] impossible de lire %s : %s", p, e)
 
     if not all_series:

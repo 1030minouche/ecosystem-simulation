@@ -91,7 +91,8 @@ def export_genetics(db_path: Path, out_dir: Path) -> Path:
     ):
         try:
             genome_data = json.loads(row["genome_json"])
-        except Exception:
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.debug("swallowed: %s (uid=%s)", exc, row["uid"])
             continue
         genes = genome_data.get("g", []) if isinstance(genome_data, dict) else genome_data
         entry = {
@@ -153,7 +154,8 @@ def export_spatial(db_path: Path, out_dir: Path) -> Path:
         import gzip
         try:
             data = json.loads(gzip.decompress(row["data_blob"]))
-        except Exception:
+        except (OSError, gzip.BadGzipFile, json.JSONDecodeError, TypeError) as exc:
+            logger.debug("swallowed: %s (tick=%s)", exc, row["tick"])
             continue
         for ind in data.get("individuals", []):
             rows.append({
@@ -193,6 +195,6 @@ def export_all(db_path: Path | str, out_dir: Path | str | None = None) -> dict[s
     for name, fn in exporters:
         try:
             results[name] = fn(db_path, out_dir)
-        except Exception as e:
+        except (sqlite3.Error, OSError, ValueError, KeyError) as e:
             logger.warning("[export] %s ignoré : %s", name, e)
     return results

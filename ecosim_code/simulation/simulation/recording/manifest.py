@@ -22,7 +22,7 @@ def _git_hash() -> str:
             cwd=Path(__file__).parent,
         )
         return result.stdout.strip() or "unknown"
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return "unknown"
 
 
@@ -92,5 +92,5 @@ def read_manifest(db_path: Path) -> dict | None:
         ).fetchone()
         conn.close()
         return json.loads(row[0]) if row else None
-    except Exception:
+    except (sqlite3.Error, json.JSONDecodeError, OSError):
         return None

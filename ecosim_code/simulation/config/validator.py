@@ -33,7 +33,7 @@ def validate_config(config: dict) -> list[str]:
         if not p.parent.exists() and not p.parent == Path("."):
             try:
                 p.parent.mkdir(parents=True, exist_ok=True)
-            except Exception as exc:
+            except OSError as exc:
                 errors.append(f"Impossible de créer le dossier de sortie : {exc}")
 
     return errors

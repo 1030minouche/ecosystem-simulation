@@ -7,6 +7,7 @@ Lancer directement ou via lancer_editeur_especes.bat
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from tkinter import colorchooser, messagebox
 import tkinter as tk
@@ -15,6 +16,8 @@ from typing import Optional
 
 # ── Chemin vers le dossier espèces ────────────────────────────────────────────
 SPECIES_DIR = Path(__file__).parent.parent / "species"
+
+logger = logging.getLogger(__name__)
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 TYPES            = ["plant", "herbivore", "carnivore", "omnivore", "volant"]
@@ -498,8 +501,8 @@ class SpeciesEditor:
                 emoji = TYPE_EMOJI.get(stype, "❓")
                 self.listbox.insert(tk.END, f"  {emoji}  {name}")
                 self._file_stems.append(path.stem)
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+                logger.debug("swallowed: %s (%s)", exc, path)
 
         if select_stem and select_stem in self._file_stems:
             idx = self._file_stems.index(select_stem)
@@ -521,7 +524,7 @@ class SpeciesEditor:
         path = SPECIES_DIR / f"{stem}.json"
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-        except Exception as e:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
             messagebox.showerror("Erreur lecture", f"Impossible de lire {stem}.json :\n{e}")
             return
 

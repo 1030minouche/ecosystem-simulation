@@ -10,9 +10,13 @@ Références :
 """
 from __future__ import annotations
 
+import json
+import logging
 import math
 from pathlib import Path
 from typing import Sequence
+
+logger = logging.getLogger(__name__)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -150,8 +154,8 @@ def compute_diversity_at_tick(db_path: Path, tick: int,
         if e.genome_json:
             try:
                 genomes.append(Genome.from_json(e.genome_json))
-            except Exception:
-                pass
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+                logger.debug("swallowed: %s", exc)
 
     if not genomes:
         return {"n": 0, "He": 0.0, "pi": 0.0}
@@ -186,7 +190,8 @@ def compute_fst_spatial(db_path: Path, tick: int,
             continue
         try:
             g = Genome.from_json(e.genome_json)
-        except Exception:
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+            logger.debug("swallowed: %s", exc)
             continue
         key = ("N" if e.y < mid_y else "S") + ("W" if e.x < mid_x else "E")
         groups[key].append(g)
