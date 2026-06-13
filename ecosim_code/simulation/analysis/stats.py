@@ -11,9 +11,12 @@ Usage typique :
 from __future__ import annotations
 
 import json
+import logging
 import math
 import sqlite3
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _read_counts(db_path: Path) -> list[dict]:
@@ -58,8 +61,8 @@ def aggregate_replicates(db_paths: list[Path | str],
             series = _read_counts_v2(Path(p))
             if series:
                 all_series.append(series)
-        except Exception as e:
-            print(f"[stats] impossible de lire {p} : {e}")
+        except (sqlite3.Error, OSError, json.JSONDecodeError) as e:
+            logger.warning("[stats] impossible de lire %s : %s", p, e)
 
     if not all_series:
         return []

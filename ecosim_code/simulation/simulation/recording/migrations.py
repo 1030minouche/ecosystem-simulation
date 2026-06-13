@@ -15,7 +15,7 @@ def _get_version(conn: sqlite3.Connection) -> int:
     try:
         row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
         return int(row[0]) if row else 1
-    except Exception:
+    except (sqlite3.Error, ValueError, TypeError):
         return 1
 
 

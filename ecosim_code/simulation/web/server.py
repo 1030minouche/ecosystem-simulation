@@ -13,12 +13,16 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import logging
+import sqlite3
 import threading
 from pathlib import Path
 
 import aiohttp
 import numpy as np
 from aiohttp import web
+
+logger = logging.getLogger(__name__)
 
 _BASE       = Path(__file__).parent
 _STATIC     = _BASE / "static"
@@ -101,13 +105,13 @@ def _get_terrain_arr(db: str, out_w: int, out_h: int) -> np.ndarray:
 
 def _get_stored_frame_png(db: str, tick: int) -> bytes | None:
     """Lit un PNG pré-rendu depuis la table renders du .db.  Retourne None si absent."""
-    import sqlite3
     try:
         conn = sqlite3.connect(db, check_same_thread=False)
         row  = conn.execute("SELECT png FROM renders WHERE tick=?", (tick,)).fetchone()
         conn.close()
         return row[0] if row else None
-    except Exception:
+    except sqlite3.Error as exc:
+        logger.debug("swallowed: %s (db=%s tick=%s)", exc, db, tick)
         return None
 
 
@@ -202,13 +206,13 @@ def _read_frame_json(db: str, tick: int) -> dict:
 
 def _quick_meta(db_path: str, key: str) -> str:
     """Lit une valeur meta depuis un .db sans ouvrir un ReplayReader complet."""
-    import sqlite3
     try:
         conn = sqlite3.connect(db_path, check_same_thread=False)
         row  = conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
         conn.close()
         return row[0] if row else ""
-    except Exception:
+    except sqlite3.Error as exc:
+        logger.debug("swallowed: %s (db=%s key=%s)", exc, db_path, key)
         return ""
 
 
@@ -285,8 +289,8 @@ async def api_diseases(request):
                     "mortality_chance":  d.get("mortality_chance", 0),
                     "infectious_ticks":  d.get("infectious_ticks", 0),
                 })
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+                logger.debug("swallowed: %s (%s)", exc, p)
     return web.json_response(diseases)
 
 
@@ -343,7 +347,6 @@ async def api_sim_cancel(request):
 
 def _enrich_run_meta(p) -> dict:
     """Construit le dict enrichi pour une run (appelé dans un thread pool)."""
-    import sqlite3
     from datetime import datetime
     db = str(p)
     try:
@@ -361,7 +364,8 @@ def _enrich_run_meta(p) -> dict:
                 if n > max_pops.get(sp, 0):
                     max_pops[sp] = n
         conn.close()
-    except Exception:
+    except (sqlite3.Error, json.JSONDecodeError) as exc:
+        logger.debug("swallowed: %s (%s)", exc, db)
         meta = {}
         last_tick = 0
         max_pops = {}
@@ -516,8 +520,8 @@ async def websocket_handler(request):
                     data = json.loads(msg.data)
                     if data.get("type") == "ping":
                         await ws.send_str(json.dumps({"type": "pong"}))
-                except Exception:
-                    pass
+                except (json.JSONDecodeError, ConnectionError) as exc:
+                    logger.debug("swallowed: %s", exc)
             elif msg.type in (aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSE):
                 break
     finally:
@@ -529,7 +533,7 @@ async def websocket_handler(request):
 
 def _read_timeseries(db: str) -> list:
     """Toutes les populations par keyframe avec eco_metrics si disponible."""
-    import sqlite3, gzip
+    import gzip
     conn = sqlite3.connect(db, check_same_thread=False)
     try:
         try:
@@ -544,18 +548,20 @@ def _read_timeseries(db: str) -> list:
                     if em:
                         try:
                             row["eco"] = json.loads(em)
-                        except Exception:
-                            pass
+                        except (json.JSONDecodeError, TypeError) as exc:
+                            logger.debug("swallowed: %s", exc)
                     result.append(row)
                 return result
-        except Exception:
-            pass
+        except sqlite3.Error as exc:
+            # Ancien schema sans la colonne eco_metrics
+            logger.debug("swallowed: %s", exc)
         rows = conn.execute("SELECT tick, data FROM counts ORDER BY tick").fetchall()
         if rows:
             conn.close()
             return [{"tick": t, "counts": json.loads(d)} for t, d in rows]
-    except Exception:
-        pass
+    except sqlite3.Error as exc:
+        # Ancien schema sans table counts, fallback keyframes
+        logger.debug("swallowed: %s", exc)
     rows = conn.execute("SELECT tick, data_blob FROM keyframes ORDER BY tick").fetchall()
     conn.close()
     result = []
@@ -641,7 +647,6 @@ def _read_day_info(db: str, day: int) -> dict:
 
 def _read_stats(db: str) -> dict:
     """Statistiques agrégées : naissances/espèce, max populations."""
-    import sqlite3
     conn = sqlite3.connect(db, check_same_thread=False)
     births_by_sp: dict = {}
     try:
@@ -649,16 +654,16 @@ def _read_stats(db: str) -> dict:
                 "SELECT payload FROM events WHERE kind='birth'"):
             sp = json.loads(payload_str).get("species", "?")
             births_by_sp[sp] = births_by_sp.get(sp, 0) + 1
-    except Exception:
-        pass
+    except (sqlite3.Error, json.JSONDecodeError) as exc:
+        logger.debug("swallowed: %s", exc)
     max_pops: dict = {}
     try:
         for (data,) in conn.execute("SELECT data FROM counts"):
             for sp, n in json.loads(data).items():
                 if n > max_pops.get(sp, 0):
                     max_pops[sp] = n
-    except Exception:
-        pass
+    except (sqlite3.Error, json.JSONDecodeError) as exc:
+        logger.debug("swallowed: %s", exc)
     conn.close()
     return {"births_by_species": births_by_sp, "max_populations": max_pops}
 
@@ -788,8 +793,8 @@ def _read_epidemic(db: str) -> dict:
                 "species": p.get("species", "?"),
                 "source_uid": -1,
             })
-    except Exception:
-        pass
+    except (sqlite3.Error, json.JSONDecodeError) as exc:
+        logger.debug("swallowed: %s", exc)
     conn.close()
 
     diseases   = sorted({e["disease"] for e in inf_events + death_events})
@@ -898,7 +903,8 @@ def _render_heatmap_png(db: str, tick: int, species: str,
         if snap is None:
             raise ValueError("no snap")
         return render_heatmap(snap, world_w, world_h, species, out_w, out_h)
-    except Exception:
+    except (sqlite3.Error, OSError, ValueError, KeyError, AttributeError) as exc:
+        logger.debug("heatmap fallback: %s", exc)
         img = Image.new("RGB", (out_w, out_h), (20, 20, 40))
         buf = io.BytesIO()
         img.save(buf, format="PNG")

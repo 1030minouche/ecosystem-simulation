@@ -16,8 +16,11 @@ Tables :
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import uuid
+
+logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -391,7 +394,7 @@ class Recorder:
                         "INSERT OR REPLACE INTO renders(tick, png) VALUES (?, ?)",
                         (tick, png),
                     )
-            except Exception:
-                pass  # ne jamais bloquer la simulation
+            except Exception as exc:  # noqa: BLE001 — best-effort, ne jamais bloquer la simulation
+                logger.debug("frame_renderer swallowed: %s (tick=%s)", exc, tick)
 
         self._conn.commit()

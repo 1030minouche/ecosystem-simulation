@@ -11,8 +11,11 @@ Usage :
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def compute_R0(db_path: Path | str, disease_name: str | None = None,
@@ -48,7 +51,8 @@ def compute_R0(db_path: Path | str, disease_name: str | None = None,
     for row in conn.execute(query, params):
         try:
             payload = json.loads(row["payload"])
-        except Exception:
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.debug("swallowed: %s", exc)
             continue
         if disease_name and payload.get("disease_name") != disease_name:
             continue
@@ -93,7 +97,8 @@ def infection_timeseries(db_path: Path | str,
     ):
         try:
             payload = json.loads(row["payload"])
-        except Exception:
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.debug("swallowed: %s", exc)
             continue
         if disease_name and payload.get("disease_name") != disease_name:
             continue
