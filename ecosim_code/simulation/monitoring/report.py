@@ -1,8 +1,11 @@
 import json
+import logging
 import math
 import pathlib
 from datetime import datetime
 from simulation.utils.counting import count_by_species
+
+logger = logging.getLogger(__name__)
 
 _BASE_DIR    = pathlib.Path(__file__).parent.parent
 _REPORTS_DIR = _BASE_DIR / "reports"
@@ -79,7 +82,7 @@ class SimulationReport:
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt
         except ImportError:
-            print("matplotlib non installé — graphiques désactivés")
+            logger.warning("matplotlib non installé — graphiques désactivés")
             return
 
         if len(self.history) < 2:
@@ -113,7 +116,7 @@ class SimulationReport:
         fig.tight_layout()
         fig.savefig(base_path + ".png", dpi=120)
         plt.close(fig)
-        print(f"📈 Graphique généré : {base_path}.png")
+        logger.info("Graphique généré : %s.png", base_path)
 
     def generate(self, tick: int, plants: list, individuals: list,
                  grid_width: int = 100, grid_height: int = 100) -> str:
@@ -211,6 +214,6 @@ class SimulationReport:
 
             f.write("\n" + "=" * 60 + "\n")
 
-        print(f"📊 Rapport généré : {filename}")
-        print(f"📄 Résumé texte   : {txt}")
+        logger.info("Rapport généré : %s", filename)
+        logger.info("Résumé texte   : %s", txt)
         return filename

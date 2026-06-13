@@ -3,6 +3,7 @@ Viewer 2D Python — vue du dessus, caméra fixe.
 Affiche le terrain coloré par altitude et les entités sous forme de pixels/carrés.
 """
 
+import logging
 import tkinter as tk
 from tkinter import font as tkfont
 import math
@@ -11,6 +12,8 @@ import numpy as np
 from PIL import Image, ImageTk
 from simulation.utils.counting import count_by_species
 from world.terrain import BIOME_PALETTE
+
+logger = logging.getLogger(__name__)
 
 CANVAS_W = 700
 CANVAS_H = 700
@@ -893,7 +896,7 @@ class SimViewer:
 
     def _generate_report(self):
         filename = self.engine.generate_report()
-        print(f"Rapport généré : {filename}")
+        logger.info("Rapport généré : %s", filename)
 
     def run(self):
         self.root.after(REFRESH_MS, self._loop)

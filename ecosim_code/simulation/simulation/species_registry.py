@@ -2,11 +2,15 @@
 Registre des espèces : spawn, comptage, extinction, pré-calcul des cellules valides.
 """
 
+import logging
+
 import numpy as np
 from entities.rng import rng as _ent_rng
 from entities.species import Species, sample_params
 from entities.animal import Individual
 from entities.plant import Plant
+
+logger = logging.getLogger(__name__)
 
 
 class SpeciesRegistry:
@@ -111,4 +115,4 @@ class SpeciesRegistry:
                 self._extinct.add(sp.name)
                 core.logger.log_event(tick_count, f"EXTINCTION de {sp.name}")
                 core.report.record_event(tick_count, "extinction", sp.name)
-                print(f"[EXTINCTION] {sp.name} au tick {tick_count}")
+                logger.info("[EXTINCTION] %s au tick %s", sp.name, tick_count)

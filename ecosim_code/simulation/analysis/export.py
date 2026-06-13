@@ -14,8 +14,11 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import sqlite3
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -191,5 +194,5 @@ def export_all(db_path: Path | str, out_dir: Path | str | None = None) -> dict[s
         try:
             results[name] = fn(db_path, out_dir)
         except Exception as e:
-            print(f"[export] {name} ignoré : {e}")
+            logger.warning("[export] %s ignoré : %s", name, e)
     return results

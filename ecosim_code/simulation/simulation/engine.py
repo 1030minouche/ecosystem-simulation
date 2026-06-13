@@ -7,6 +7,7 @@ compatibilité ascendante. Les implémentations vivent dans :
   - simulation/snapshotter.py       (snapshots WebSocket, rapport)
 """
 
+import logging
 import threading
 import time as _time
 from world.grid import Grid
@@ -21,6 +22,8 @@ from simulation.snapshot_view import SimulationSnapshot, EntityView
 from simulation.engine_const import DAY_LENGTH, SIM_YEAR
 import entities.rng as _entity_rng_module
 import math as _math
+
+logger = logging.getLogger(__name__)
 
 
 class SimulationEngine:
@@ -336,7 +339,7 @@ class SimulationEngine:
         if self.tick_count % 500 == 0:
             self.report.record(self.tick_count, self.plants, self.individuals)
             self.logger.log(self.tick_count, self.plants, self.individuals)
-            print(f"Tick {self.tick_count} — {self.species_counts}")
+            logger.debug("Tick %s — %s", self.tick_count, self.species_counts)
 
     # ── Maladies ─────────────────────────────────────────────────────────────
 
@@ -380,4 +383,4 @@ class SimulationEngine:
         self.individuals = []
         self.plants      = []
         self._registry.reset()
-        print("Simulation reinitialisee")
+        logger.info("Simulation reinitialisee")

@@ -1,6 +1,9 @@
+import logging
 import pathlib
 from datetime import datetime
 from simulation.utils.counting import count_by_species
+
+logger = logging.getLogger(__name__)
 
 _BASE_DIR = pathlib.Path(__file__).parent.parent
 _LOGS_DIR = _BASE_DIR / "logs"
@@ -13,7 +16,7 @@ class SimulationLogger:
         self.file = open(filename, "w", encoding="utf-8")
         self.filename = filename
         self._write_header()
-        print(f"📝 Log démarré : {filename}")
+        logger.info("Log démarré : %s", filename)
 
     def _write_header(self):
         self.file.write("=" * 60 + "\n")
@@ -41,4 +44,4 @@ class SimulationLogger:
         self.file.write("  FIN DU LOG\n")
         self.file.write("=" * 60 + "\n")
         self.file.close()
-        print(f"📝 Log fermé : {self.filename}")
+        logger.info("Log fermé : %s", self.filename)
