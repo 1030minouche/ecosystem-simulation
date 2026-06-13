@@ -381,19 +381,3 @@ class SimulationEngine:
         self.plants      = []
         self._registry.reset()
         print("Simulation reinitialisee")
-
-    # ── Reset ─────────────────────────────────────────────────────────────────
-
-    def reset(self):
-        self.logger.log_event(self.tick_count, "RESET de la simulation")
-        self.logger.close()
-        self.death_log.close()
-        self.logger    = SimulationLogger()
-        self.report    = SimulationReport()
-        self.death_log = DeathLogger()
-        self.tick_count = DAY_LENGTH // 2
-        self.running    = False
-        self.individuals = []
-        self.plants      = []
-        self._registry.reset()
-        print("Simulation reinitialisee")

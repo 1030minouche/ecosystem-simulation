@@ -64,6 +64,9 @@ class DiseaseState:
     source_id: int = -1
     # Vitesse originale sauvegardée lors de l'entrée en phase infectée
     original_max_speed: float = 0.0
+    # Souche du pathogène portée par cet hôte (lignée propre à l'individu).
+    # Si None, retomber sur la souche de référence dans DISEASE_REGISTRY.
+    strain: "DiseaseSpec | None" = None
 
     def tick(self, individual: "Individual", spec: DiseaseSpec) -> str:
         """Avance d'un tick. Retourne 'alive' ou 'dead'."""
@@ -110,7 +113,12 @@ class DiseaseState:
 
 def try_infect(source: "Individual", target: "Individual",
                spec: DiseaseSpec) -> bool:
-    """Tente une transmission de source à target. Retourne True si infection."""
+    """Tente une transmission de source à target. Retourne True si infection.
+
+    La souche transmise est celle portée par la source (ou `spec` à défaut), puis
+    mutée si `mutation_rate_pathogen > 0`. Chaque hôte porte sa propre lignée :
+    on ne mute jamais `DISEASE_REGISTRY` (qui reste la souche de référence).
+    """
     from entities.rng import rng
 
     if spec.affects_species and target.species.name.lower() not in {a.lower() for a in spec.affects_species}:
@@ -124,15 +132,18 @@ def try_infect(source: "Individual", target: "Individual",
     resistance = target._effective_params.get("disease_resistance", 0.5)
     effective_rate = spec.transmission_rate * (1.0 - resistance * 0.4)
     if rng.random() < effective_rate:
-        # Évolution du pathogène : muter la souche transmise
-        transmitted_spec = spec.mutate() if spec.mutation_rate_pathogen > 0 else spec
-        if transmitted_spec is not spec:
-            # Mettre à jour le registre avec la nouvelle souche (remplace la précédente)
-            DISEASE_REGISTRY[spec.name] = transmitted_spec
+        # Souche portée par la source (sinon souche de référence)
+        source_state = source.disease_states.get(spec.name)
+        source_strain = source_state.strain if source_state and source_state.strain else spec
+        # Mutation lors de la transmission — propre à la nouvelle lignée
+        transmitted_strain = (
+            source_strain.mutate() if source_strain.mutation_rate_pathogen > 0 else source_strain
+        )
         state = DiseaseState(
             disease_name=spec.name,
             status="exposed",
             source_id=getattr(source, "uid", id(source)),
+            strain=transmitted_strain,
         )
         target.disease_states[spec.name] = state
         return True

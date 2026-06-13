@@ -19,6 +19,7 @@ avec les tests existants).
 
 import math as _math
 from dataclasses import dataclass, field
+from typing import ClassVar
 from entities.base import Entity
 from entities.activity import _is_resting, _is_pre_rest  # noqa: F401 — ré-export
 from entities.movement import MovementMixin
@@ -54,7 +55,10 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
     disease_states: dict = field(default_factory=dict)
 
     # ── Compteur de classe pour UIDs permanents ───────────────────────────────
-    _uid_counter: int = 0  # réinitialisé par le moteur à chaque nouvelle simulation
+    # ClassVar : exclu des champs du dataclass (sinon chaque instance reçoit
+    # un attribut fantôme _uid_counter). Réinitialisé par le moteur à chaque
+    # nouvelle simulation via Individual._uid_counter = 0.
+    _uid_counter: ClassVar[int] = 0
 
     # ── Génome ────────────────────────────────────────────────────────────────
 
@@ -154,7 +158,8 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
             from entities.disease import DISEASE_REGISTRY
             dead_from_disease = False
             for ds in list(self.disease_states.values()):
-                spec = DISEASE_REGISTRY.get(ds.disease_name)
+                # Souche propre à l'hôte si disponible, sinon souche de référence
+                spec = ds.strain or DISEASE_REGISTRY.get(ds.disease_name)
                 if spec:
                     result = ds.tick(self, spec)
                     if result == "dead":
