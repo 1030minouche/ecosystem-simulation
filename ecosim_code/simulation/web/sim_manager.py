@@ -78,9 +78,16 @@ class SimulationManager:
                 src_db       = _Path(config["db_path"])
                 target_tick  = int(config.get("tick", 0))
                 disease_name = config["disease_name"]
-                target_x     = float(config.get("entity_x", 0))
-                target_y     = float(config.get("entity_y", 0))
-                target_sp    = config.get("species", "")
+
+                # Cibles : nouveau format `targets` (liste de {species,x,y}) prioritaire ;
+                # fallback sur l'ancien format à cible unique (species/entity_x/entity_y).
+                targets_in = config.get("targets")
+                if not targets_in:
+                    targets_in = [{
+                        "species": config.get("species", ""),
+                        "x":       float(config.get("entity_x", 0)),
+                        "y":       float(config.get("entity_y", 0)),
+                    }]
 
                 engine = load_engine_from_db_at_tick(src_db, target_tick)
                 load_diseases(_diseases_dir)
@@ -89,24 +96,37 @@ class SimulationManager:
                 if spec is None:
                     raise ValueError(f"Maladie inconnue : {disease_name}")
 
-                # Trouver l'individu le plus proche du clic
-                best_ind, best_d = None, float("inf")
-                for ind in engine.individuals:
-                    d = ((ind.x - target_x)**2 + (ind.y - target_y)**2)**0.5
-                    if ind.species.name == target_sp and d < best_d:
-                        best_d, best_ind = d, ind
-                if best_ind is None:  # fallback toutes espèces
+                # Pour chaque cible : trouver l'individu le plus proche du clic
+                # (même espèce en priorité, sinon toutes espèces confondues), puis
+                # l'infecter. Un individu déjà choisi est exclu des cibles suivantes.
+                infected_uids: set[int] = set()
+                infected_count = 0
+                for tgt in targets_in:
+                    tx     = float(tgt.get("x", 0))
+                    ty     = float(tgt.get("y", 0))
+                    tsp    = tgt.get("species", "")
+                    best_ind, best_d = None, float("inf")
                     for ind in engine.individuals:
-                        d = ((ind.x - target_x)**2 + (ind.y - target_y)**2)**0.5
-                        if d < best_d:
+                        if id(ind) in infected_uids:
+                            continue
+                        d = ((ind.x - tx)**2 + (ind.y - ty)**2)**0.5
+                        if ind.species.name == tsp and d < best_d:
                             best_d, best_ind = d, ind
-
-                if best_ind is not None:
-                    best_ind.disease_states[disease_name] = DiseaseState(
-                        disease_name=disease_name,
-                        status="infected",
-                        ticks_in_state=0,
-                    )
+                    if best_ind is None:
+                        for ind in engine.individuals:
+                            if id(ind) in infected_uids:
+                                continue
+                            d = ((ind.x - tx)**2 + (ind.y - ty)**2)**0.5
+                            if d < best_d:
+                                best_d, best_ind = d, ind
+                    if best_ind is not None:
+                        best_ind.disease_states[disease_name] = DiseaseState(
+                            disease_name=disease_name,
+                            status="infected",
+                            ticks_in_state=0,
+                        )
+                        infected_uids.add(id(best_ind))
+                        infected_count += 1
 
                 # Lire le preset terrain depuis la db source
                 import sqlite3 as _sq3
@@ -135,6 +155,7 @@ class SimulationManager:
                 recorder.write_meta("infect_source", str(src_db))
                 recorder.write_meta("infect_tick",   str(target_tick))
                 recorder.write_meta("infect_disease", disease_name)
+                recorder.write_meta("infect_targets", str(infected_count))
                 recorder.write_species_params(engine.species_list)
 
             elif config.get("mode") == "extend" and config.get("db_path"):

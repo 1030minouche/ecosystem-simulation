@@ -43,7 +43,7 @@ let popMaxes      = {};
 let graphHist     = {};
 let graphHidden   = new Set();
 let _graphChipsBuilt = false;
-let selectedId    = null;
+let selectedIds   = new Set();   // ids des individus actuellement sélectionnés
 let lastJsonSnap  = null;
 let playing       = false;
 let rafId         = null;
@@ -404,7 +404,7 @@ async function openAnalyse(dbPath) {
   graphHist      = {};
   graphHidden.clear();
   _graphChipsBuilt = false;
-  selectedId     = null;
+  selectedIds.clear();
   lastJsonSnap   = null;
   geneData       = null;
 
@@ -584,7 +584,7 @@ function renderIdx(idx) {
     ctx.fillRect(0, 0, cv.width, cv.height);
   }
   if (lastJsonSnap) drawInfectedDots(ctx, lastJsonSnap, cv.width, cv.height);
-  if (selectedId !== null && lastJsonSnap) drawSelectionRing(ctx, lastJsonSnap, cv.width, cv.height);
+  if (selectedIds.size && lastJsonSnap) drawSelectionRing(ctx, lastJsonSnap, cv.width, cv.height);
 }
 
 function drawInfectedDots(ctx, snap, cw, ch) {
@@ -607,18 +607,19 @@ function drawInfectedDots(ctx, snap, cw, ch) {
 }
 
 function drawSelectionRing(ctx, snap, cw, ch) {
-  if (!analyseMeta) return;
-  const entity = snap.individuals.find(e => e.id === selectedId);
-  if (!entity) return;
-  const px = entity.x / analyseMeta.world_w * cw;
-  const py = entity.y / analyseMeta.world_h * ch;
-  ctx.strokeStyle = 'rgba(255,255,200,.95)'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2); ctx.stroke();
-  const sp = speciesMap.get(entity.sp);
-  if (sp) {
-    ctx.strokeStyle = sp.color; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.stroke();
-  }
+  if (!analyseMeta || !selectedIds.size) return;
+  snap.individuals.forEach(entity => {
+    if (!selectedIds.has(entity.id)) return;
+    const px = entity.x / analyseMeta.world_w * cw;
+    const py = entity.y / analyseMeta.world_h * ch;
+    ctx.strokeStyle = 'rgba(255,255,200,.95)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2); ctx.stroke();
+    const sp = speciesMap.get(entity.sp);
+    if (sp) {
+      ctx.strokeStyle = sp.color; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.stroke();
+    }
+  });
 }
 
 function loadJsonLazy(tick) {
@@ -627,7 +628,7 @@ function loadJsonLazy(tick) {
     lastJsonSnap = snap;
     updatePopPanel(snap.counts);
     updateReplayGraph(snap.counts);
-    if (selectedId !== null) updateEntityCard(snap);
+    if (selectedIds.size) updateEntityCard(snap);
     return;
   }
   fetch(`/api/replay/frame_json?db=${encodeURIComponent(analyseDb)}&tick=${tick}`)
@@ -639,7 +640,7 @@ function loadJsonLazy(tick) {
         lastJsonSnap = snap;
         updatePopPanel(snap.counts);
         updateReplayGraph(snap.counts);
-        if (selectedId !== null) updateEntityCard(snap);
+        if (selectedIds.size) updateEntityCard(snap);
       }
     }).catch(() => {});
 }
@@ -799,9 +800,28 @@ function onCanvasClick(ev) {
     const d = Math.hypot(e.x - wx, e.y - wy);
     if (d < bestD) { bestD = d; bestId = e.id; }
   });
-  selectedId = bestId;
+  // Maj/Ctrl/Cmd : ajout/retrait dans la sélection multiple ; sinon remplacement.
+  const multi = ev.shiftKey || ev.ctrlKey || ev.metaKey;
+  if (multi) {
+    if (bestId !== null) {
+      if (selectedIds.has(bestId)) selectedIds.delete(bestId);
+      else                          selectedIds.add(bestId);
+    }
+    // Hors entité avec multi : ne touche pas à la sélection.
+  } else {
+    selectedIds.clear();
+    if (bestId !== null) selectedIds.add(bestId);
+  }
   renderIdx(kfIdx);
   if (lastJsonSnap) updateEntityCard(lastJsonSnap);
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  if (lastJsonSnap) {
+    renderIdx(kfIdx);
+    updateEntityCard(lastJsonSnap);
+  }
 }
 
 let _hoverRafPending = false;
@@ -825,32 +845,96 @@ function onCanvasHover(ev) {
 
 function updateEntityCard(snap) {
   const card = $('entity-card');
-  if (selectedId === null) { card.innerHTML = '<p class="entity-ph">— cliquez une entité</p>'; return; }
-  const entity = snap.individuals.find(e => e.id === selectedId);
-  if (!entity) { card.innerHTML = '<p class="entity-ph" style="color:var(--err)">✝ disparu</p>'; return; }
-  const sp    = speciesMap.get(entity.sp);
-  const color = sp ? sp.color : '#888';
-  const maxE  = 200; const ratio = Math.max(0, Math.min(1, entity.energy / maxE));
-  const barC  = ratio > .5 ? 'var(--ok)' : ratio > .2 ? 'var(--warn)' : 'var(--err)';
+  if (!selectedIds.size) {
+    card.innerHTML = '<p class="entity-ph">— cliquez une entité (Maj+clic pour ajouter)</p>';
+    return;
+  }
+
+  // Récupère les entités encore vivantes ; purge les ids disparus.
+  const entities = [];
+  selectedIds.forEach(id => {
+    const e = snap.individuals.find(x => x.id === id);
+    if (e) entities.push(e);
+    else   selectedIds.delete(id);
+  });
+
+  if (!entities.length) {
+    card.innerHTML = '<p class="entity-ph" style="color:var(--err)">✝ disparu</p>';
+    return;
+  }
+
+  if (entities.length === 1) {
+    const entity = entities[0];
+    const sp    = speciesMap.get(entity.sp);
+    const color = sp ? sp.color : '#888';
+    const maxE  = 200; const ratio = Math.max(0, Math.min(1, entity.energy / maxE));
+    const barC  = ratio > .5 ? 'var(--ok)' : ratio > .2 ? 'var(--warn)' : 'var(--err)';
+    card.innerHTML = `
+      <div class="entity-name" style="color:${color}">
+        <span class="sp-dot" style="background:${color}"></span>${entity.sp}
+      </div>
+      <div class="nrg-wrap"><div class="nrg-fill" style="width:${Math.round(ratio*100)}%;background:${barC}"></div></div>
+      <div class="entity-info">
+        id: ${entity.id}<br>
+        x: ${entity.x?.toFixed(1)} &nbsp; y: ${entity.y?.toFixed(1)}<br>
+        énergie: ${entity.energy?.toFixed(1)} &nbsp; âge: ${entity.age?.toLocaleString()}<br>
+        état: ${entity.state || '—'}${entity.infected ? ' &nbsp;<span style="color:#f44;font-weight:700">&#9679; infecté</span>' : ''}
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">
+        💡 Maj+clic pour sélectionner plusieurs individus
+      </div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%"
+              onclick="searchGenealogyById(${entity.id})">🌳 Voir l'arbre généalogique</button>
+      <button class="btn btn-danger btn-sm" id="infect-entity-btn" style="margin-top:6px;width:100%">
+        🦠 Infecter cet individu…
+      </button>`;
+    const infectBtn = card.querySelector('#infect-entity-btn');
+    if (infectBtn) infectBtn.addEventListener('click', () =>
+      openInfectModal([{sp: entity.sp, x: entity.x, y: entity.y, id: entity.id}]));
+    return;
+  }
+
+  // Sélection multiple : afficher le décompte + breakdown par espèce
+  const byTax = {};
+  entities.forEach(e => { byTax[e.sp] = (byTax[e.sp] || 0) + 1; });
+  const breakdown = Object.entries(byTax)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, n]) => {
+      const sp = speciesMap.get(name);
+      const col = sp ? sp.color : '#888';
+      return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0">
+        <span class="sp-dot" style="background:${col}"></span>
+        <span>${name}</span>
+        <span style="margin-left:auto;color:var(--text-dim)">×${n}</span>
+      </div>`;
+    }).join('');
+
+  const nInfected = entities.filter(e => e.infected).length;
+  const targets = entities.map(e => ({sp: e.sp, x: e.x, y: e.y, id: e.id}));
+
   card.innerHTML = `
-    <div class="entity-name" style="color:${color}">
-      <span class="sp-dot" style="background:${color}"></span>${entity.sp}
+    <div class="entity-name">
+      <span style="background:#7a9abc;color:#fff;border-radius:10px;padding:2px 8px;font-size:12px">
+        ${entities.length} sélectionnés
+      </span>
     </div>
-    <div class="nrg-wrap"><div class="nrg-fill" style="width:${Math.round(ratio*100)}%;background:${barC}"></div></div>
-    <div class="entity-info">
-      id: ${entity.id}<br>
-      x: ${entity.x?.toFixed(1)} &nbsp; y: ${entity.y?.toFixed(1)}<br>
-      énergie: ${entity.energy?.toFixed(1)} &nbsp; âge: ${entity.age?.toLocaleString()}<br>
-      état: ${entity.state || '—'}${entity.infected ? ' &nbsp;<span style="color:#f44;font-weight:700">&#9679; infecté</span>' : ''}
+    <div style="margin-top:8px;font-size:12px">${breakdown}</div>
+    ${nInfected ? `<div style="margin-top:6px;color:#f44;font-size:11px">
+        &#9679; ${nInfected} déjà infecté${nInfected > 1 ? 's' : ''}
+      </div>` : ''}
+    <div style="font-size:11px;color:var(--text-dim);margin-top:8px">
+      💡 Maj+clic pour ajouter/retirer
     </div>
-    <button class="btn btn-ghost btn-sm" style="margin-top:8px;width:100%"
-            onclick="searchGenealogyById(${entity.id})">🌳 Voir l'arbre généalogique</button>
+    <button class="btn btn-ghost btn-sm" id="clear-selection-btn" style="margin-top:8px;width:100%">
+      Tout désélectionner
+    </button>
     <button class="btn btn-danger btn-sm" id="infect-entity-btn" style="margin-top:6px;width:100%">
-      🦠 Infecter cet individu…
+      🦠 Infecter ces ${entities.length} individus…
     </button>`;
+  const clearBtn = card.querySelector('#clear-selection-btn');
+  if (clearBtn) clearBtn.addEventListener('click', clearSelection);
   const infectBtn = card.querySelector('#infect-entity-btn');
-  if (infectBtn) infectBtn.addEventListener('click', () =>
-    openInfectModal({sp: entity.sp, x: entity.x, y: entity.y, id: entity.id}));
+  if (infectBtn) infectBtn.addEventListener('click', () => openInfectModal(targets));
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1391,24 +1475,54 @@ function renderDayChart(highlightTick = null) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// INFECTION — clic sur individu → injecter une maladie → relancer
+// INFECTION — clic sur individu(s) → injecter une maladie → relancer
 // ══════════════════════════════════════════════════════════════════════════════
-let _infectTarget = null;   // { sp, x, y, id }
-let _infectTick   = null;   // tick de la frame courante
-let _diseaseList  = null;   // cache des maladies disponibles
+let _infectTargets = null;  // [{ sp, x, y, id }, ...]
+let _infectTick    = null;  // tick de la frame courante
+let _diseaseList   = null;  // cache des maladies disponibles
 
-async function openInfectModal(entityInfo) {
-  _infectTarget = entityInfo;
-  _infectTick   = kfTicks[kfIdx] ?? 0;
+async function openInfectModal(entityInfoOrList) {
+  // Accepte une cible unique (objet) OU une liste de cibles (rétro-compat).
+  const targets = Array.isArray(entityInfoOrList) ? entityInfoOrList : [entityInfoOrList];
+  if (!targets.length) return;
 
-  const sp    = speciesMap.get(entityInfo.sp);
-  const color = sp ? sp.color : '#888';
-  $('infect-target-info').innerHTML =
-    `<span class="sp-dot" style="background:${color};display:inline-block;` +
-    `margin-right:6px;vertical-align:middle"></span>` +
-    `<strong style="color:${color}">${entityInfo.sp}</strong>` +
-    `&nbsp;—&nbsp;x:${entityInfo.x?.toFixed(1)} y:${entityInfo.y?.toFixed(1)}<br>` +
-    `<span style="color:var(--text-dim)">Tick: ${_infectTick.toLocaleString()}</span>`;
+  _infectTargets = targets;
+  _infectTick    = kfTicks[kfIdx] ?? 0;
+
+  // Construit le résumé de cibles (titre + breakdown si multi)
+  let info;
+  if (targets.length === 1) {
+    const t  = targets[0];
+    const sp = speciesMap.get(t.sp);
+    const color = sp ? sp.color : '#888';
+    info =
+      `<span class="sp-dot" style="background:${color};display:inline-block;` +
+      `margin-right:6px;vertical-align:middle"></span>` +
+      `<strong style="color:${color}">${t.sp}</strong>` +
+      `&nbsp;—&nbsp;x:${t.x?.toFixed(1)} y:${t.y?.toFixed(1)}<br>` +
+      `<span style="color:var(--text-dim)">Tick: ${_infectTick.toLocaleString()}</span>`;
+  } else {
+    const byTax = {};
+    targets.forEach(t => { byTax[t.sp] = (byTax[t.sp] || 0) + 1; });
+    const rows = Object.entries(byTax)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, n]) => {
+        const sp  = speciesMap.get(name);
+        const col = sp ? sp.color : '#888';
+        return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px">
+          <span class="sp-dot" style="background:${col}"></span>${name} ×${n}
+        </span>`;
+      }).join('');
+    info =
+      `<strong>${targets.length} cibles</strong><br>` +
+      `<div style="margin-top:4px">${rows}</div>` +
+      `<span style="color:var(--text-dim);display:block;margin-top:6px">Tick: ${_infectTick.toLocaleString()}</span>`;
+  }
+  $('infect-target-info').innerHTML = info;
+  const titleEl = document.querySelector('#infect-modal .modal-title');
+  if (titleEl) titleEl.textContent = targets.length > 1
+    ? `🦠 Infecter ${targets.length} individus`
+    : `🦠 Infecter un individu`;
 
   if (!_diseaseList) {
     try {
@@ -1448,14 +1562,14 @@ function updateInfectDesc() {
 
 function closeInfectModal() {
   $('infect-modal').classList.add('hidden');
-  _infectTarget = null;
+  _infectTargets = null;
 }
 
 async function submitInfect() {
-  // Capturer la cible AVANT closeInfectModal qui la met à null
-  const target    = _infectTarget;
+  // Capturer les cibles AVANT closeInfectModal qui les met à null
+  const targets   = _infectTargets;
   const infectTck = _infectTick ?? 0;
-  if (!target || !analyseDb) return;
+  if (!targets || !targets.length || !analyseDb) return;
 
   const disease   = $('infect-disease-select').value;
   const moreTicks = parseInt($('infect-ticks-input').value) || 5000;
@@ -1467,14 +1581,15 @@ async function submitInfect() {
   const body = {
     db:           analyseDb,
     tick:         infectTck,
-    species:      target.sp,
-    x:            target.x,
-    y:            target.y,
+    targets:      targets.map(t => ({species: t.sp, x: t.x, y: t.y})),
     disease_name: disease,
     more_ticks:   moreTicks,
   };
 
-  toast(`Démarrage de l'infection de ${target.sp} par ${disease}…`);
+  const summary = targets.length === 1
+    ? `${targets[0].sp}`
+    : `${targets.length} individus`;
+  toast(`Démarrage de l'infection de ${summary} par ${disease}…`);
 
   try {
     const res = await fetch('/api/replay/infect', {
@@ -1488,7 +1603,7 @@ async function submitInfect() {
       resetProgressUI();
       showPage('running');
       setText('run-config-lbl',
-        `🦠 ${disease} → ${target.sp} · ${moreTicks.toLocaleString()} ticks depuis tick ${infectTck.toLocaleString()}`);
+        `🦠 ${disease} → ${summary} · ${moreTicks.toLocaleString()} ticks depuis tick ${infectTck.toLocaleString()}`);
     } else if (res.already_running) {
       toast('Une simulation est déjà en cours', true);
     } else {
