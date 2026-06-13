@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ecosim"
+version = "0.5.0"
+description = "Simulateur d'écosystème multi-espèces individu-centré (agent-based) en Python."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "EcoSim contributors" },
+]
+keywords = ["ecology", "agent-based", "simulation", "genetics", "epidemiology", "SEIR"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Artificial Life",
+]
+dependencies = [
+    "numpy>=1.24,<2",
+    "scipy>=1.11,<2",
+    "Pillow>=10.0,<11",
+    "aiohttp>=3.9,<4",
+    "noise>=1.2,<2",
+    "matplotlib>=3.7,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+]
+
+# NOTE packaging : la base de code vit dans `ecosim_code/simulation/` et utilise
+# des imports relatifs à ce dossier (`from world.grid import ...`). Elle n'est
+# donc pas exposée comme un paquet Python importable nommé `ecosim`. Aucun
+# entry-point script n'est défini ici tant que la structure n'est pas
+# refactorée en paquet propre. Les commandes de lancement restent celles
+# documentées dans le README (depuis `ecosim_code/simulation/`).
+
+[tool.setuptools]
+# Pas de paquet à découvrir tant que la ré-architecture n'est pas faite.
+py-modules = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["ecosim_code/simulation/tests"]
+python_files = "test_*.py"
