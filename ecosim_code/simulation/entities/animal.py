@@ -154,7 +154,8 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
             from entities.disease import DISEASE_REGISTRY
             dead_from_disease = False
             for ds in list(self.disease_states.values()):
-                spec = DISEASE_REGISTRY.get(ds.disease_name)
+                # Souche propre à l'hôte si disponible, sinon souche de référence
+                spec = ds.strain or DISEASE_REGISTRY.get(ds.disease_name)
                 if spec:
                     result = ds.tick(self, spec)
                     if result == "dead":
