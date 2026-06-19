@@ -5,23 +5,19 @@ echo   EcoSim — Lancement de la simulation
 echo ============================================================
 echo.
 
-cd /d "%~dp0ecosim_code\simulation"
+cd /d "%~dp0"
 
 echo Installation des dependances (si necessaire)...
-pip install -r requirements.txt
+pip install -e . >NUL 2>&1
 echo.
 
 echo ============================================================
-echo   ETAPE 1 : L'editeur de terrain va s'ouvrir.
-echo             Configurez votre terrain puis cliquez Confirmer.
-echo.
-echo   ETAPE 2 : Le viewer 2D s'ouvre automatiquement.
-echo             Cliquez Play pour demarrer la simulation.
-echo.
+echo   Le navigateur va s'ouvrir sur http://localhost:9000
 echo   (Fermez cette fenetre pour arreter la simulation)
 echo ============================================================
 echo.
 
+cd /d "%~dp0ecosim_code\simulation"
 python main.py
 
 pause

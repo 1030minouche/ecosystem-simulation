@@ -1,6 +1,6 @@
 """
 EcoSim Web Server — aiohttp
-Lance un serveur HTTP+WebSocket sur localhost:8765.
+Lance un serveur HTTP+WebSocket sur localhost:9000 (port par défaut).
 
 Rendu :
   Les frames sont pré-rendues pendant la simulation et stockées dans le .db
