@@ -32,11 +32,11 @@ from gui.app import (
     C_BG, C_PANEL, C_CARD, C_BORDER, C_ACCENT, C_DANGER,
     C_SUCCESS, C_TEXT, C_SUB, C_WARN, WIN_W, WIN_H,
 )
-from simulation.engine_const import DAY_LENGTH
+from engine.engine_const import DAY_LENGTH
 
 if TYPE_CHECKING:
-    from simulation.recording.replay import ReplayReader
-    from simulation.recording.schema import WorldSnapshot
+    from engine.recording.replay import ReplayReader
+    from engine.recording.schema import WorldSnapshot
 
 CANVAS_W  = 680
 CANVAS_H  = 590
@@ -371,7 +371,7 @@ class ReplayFrame(tk.Frame):
         if self._reader is not None:
             self._reader.close()
 
-        from simulation.recording.replay import ReplayReader
+        from engine.recording.replay import ReplayReader
         self._reader = ReplayReader(Path(db_path))
 
         meta       = self._reader.meta

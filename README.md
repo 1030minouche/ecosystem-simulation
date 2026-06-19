@@ -19,17 +19,13 @@ EcoSim est un simulateur d'écosystème multi-espèces individu-centré (agent-b
 
 ```bash
 git clone <url-du-depot>
-cd <repo>/ecosim_code/simulation
-pip install -r requirements.txt
-```
-
-Alternative (à partir de la racine du dépôt, avec le `pyproject.toml`) :
-
-```bash
+cd <repo>
 pip install -e .
 ```
 
-Cette seconde méthode installe les dépendances bornées déclarées dans `pyproject.toml`. La structure de code actuelle exige cependant que les commandes de lancement soient exécutées depuis le dossier `ecosim_code/simulation/` (les imports internes sont relatifs à ce dossier, qui n'est pas exposé comme un paquet importable du nom `ecosim`). Le `pyproject.toml` à la racine sert donc surtout à figer les dépendances, fournir la configuration `pytest` et `ruff`, et préparer une future ré-architecture en paquet installable.
+Cette commande installe les dépendances bornées déclarées dans `pyproject.toml`.
+
+> ⚠️ La base de code vit sous `ecosim_code/simulation/` et utilise des imports relatifs à ce dossier (`from world.grid import …`). Elle n'est pas encore exposée comme un paquet importable nommé `ecosim` ; les commandes de lancement ci-dessous doivent donc être exécutées depuis ce répertoire. Le `pyproject.toml` à la racine sert à figer les dépendances, fournir la configuration `pytest` et `ruff`, et préparer une future ré-architecture en paquet propre.
 
 Prérequis : Python 3.10 ou plus récent. Tkinter est inclus dans la bibliothèque standard.
 
@@ -43,7 +39,7 @@ Toutes les commandes ci-dessous sont à exécuter depuis `ecosim_code/simulation
   python main.py
   ```
 
-  Ouvre un serveur local sur `http://localhost:9000` (port modifiable via `--port`).
+  Démarre un serveur local sur `http://localhost:9000` (port modifiable via `--port 8765`).
 
 - **Interface Tkinter (héritée)** :
 
@@ -70,18 +66,21 @@ Toutes les commandes ci-dessous sont à exécuter depuis `ecosim_code/simulation
 
 ```
 ecosim_code/simulation/
-├── entities/      agents : animal, plant, genetics, disease, ...
+├── main.py        point d'entrée CLI
+├── entities/      agents : animal, plant, genetics, disease, …
 ├── world/         grid, spatial_grid, terrain (Perlin)
-├── simulation/    engine, runner, headless, recording (SQLite)
-├── analysis/      stats, génétique (Fst/He/pi), épidémiologie (R0)
+├── engine/        moteur : engine, runner, headless, recording (SQLite)
+├── analysis/      stats, génétique (Fst/He/π), épidémiologie (R₀) — post-hoc
 ├── batch/         sweep de paramètres
 ├── monitoring/    logger, death_log, report
-├── gui/           Tkinter (setup -> run -> replay)
+├── gui/           Tkinter (setup → run → replay) — hérité
 ├── web/           serveur aiohttp + renderer + SPA JS
 ├── config/        defaults + validator
-├── docs/          ODD_protocol.md, parameters.md
+├── docs/          ODD_protocol.md, parameters.md, INDEX.md
 └── tests/         153 tests pytest
 ```
+
+> 📄 [`docs/INDEX.md`](ecosim_code/simulation/docs/INDEX.md) — cartographie exhaustive de chaque fichier et de son rôle.
 
 ## Documentation scientifique
 

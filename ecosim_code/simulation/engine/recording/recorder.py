@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from simulation.recording.schema import EntitySnapshot, WorldSnapshot, Event
+from engine.recording.schema import EntitySnapshot, WorldSnapshot, Event
 
 if TYPE_CHECKING:
-    from simulation.engine import SimulationEngine
+    from engine.engine import SimulationEngine
 
 
 import math as _math

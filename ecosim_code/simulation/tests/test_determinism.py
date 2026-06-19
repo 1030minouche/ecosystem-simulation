@@ -2,7 +2,7 @@
 Tests de déterminisme : deux simulations avec le même seed doivent produire
 exactement les mêmes résultats ; des seeds différents doivent diverger.
 """
-from simulation.engine import SimulationEngine
+from engine.engine import SimulationEngine
 from world.grid import Grid
 
 

@@ -4,7 +4,7 @@ Importez depuis ce module plutôt que de dupliquer dans chaque fichier.
 """
 
 # ── Temps ─────────────────────────────────────────────────────────────────────
-from simulation.engine_const import DAY_LENGTH, SIM_YEAR  # noqa: F401 — ré-export
+from engine.engine_const import DAY_LENGTH, SIM_YEAR  # noqa: F401 — ré-export
 
 # ── Rendu web ─────────────────────────────────────────────────────────────────
 RENDER_W: int = 700

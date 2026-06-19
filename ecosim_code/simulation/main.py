@@ -2,10 +2,10 @@
 EcoSim — point d'entrée.
 
 Usage:
-  python main.py                             # Interface web localhost:8765
-  python main.py --tk                        # Ancien GUI tkinter
-  python main.py --headless --ticks N        # Headless CLI
-  python main.py --port 9000                 # Port custom
+  python main.py                             # Interface web localhost:9000
+  python main.py --tk                        # GUI Tkinter (hérité)
+  python main.py --headless --ticks N        # Mode headless CLI
+  python main.py --port 8765                 # Port custom
 """
 import argparse
 import sys
@@ -22,7 +22,7 @@ parser.add_argument("--port",      type=int,  default=9000)
 args, _ = parser.parse_known_args()
 
 if args.headless:
-    from simulation.headless import run_headless
+    from engine.headless import run_headless
     run_headless(
         ticks=args.ticks,
         seed=args.seed,

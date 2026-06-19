@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from typing import Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from simulation.engine import SimulationEngine
-    from simulation.recording.recorder import Recorder
+    from engine.engine import SimulationEngine
+    from engine.recording.recorder import Recorder
 
 
 @dataclass

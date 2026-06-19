@@ -3,25 +3,24 @@ __pycache__/
 *.py[cod]
 *.pyo
 
-# ── Logs de simulation ────────────────────────────────────────────────────────
+# ── Caches d'outils ───────────────────────────────────────────────────────────
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ── Données générées par les runs (non versionnées) ───────────────────────────
 logs/
-*.log
-ecosim_code/simulation/logs/
-
-# ── Rapports de simulation ────────────────────────────────────────────────────
 reports/
+runs/
+*.log
 *.csv
-ecosim_code/simulation/reports/
+*.db
 
-# ── Divers ────────────────────────────────────────────────────────────────────
-ecosim_code/TODO.txt
+# ── IDE / outils locaux ───────────────────────────────────────────────────────
 .claude/
-analyse_code.md
-reprise.txt
-optimisation.md
-fix_ticks.md
-fix_bursts.md
-REFACTORING_INSTRUCTIONS.md
+.idea/
+.vscode/
+
+# ── Audits internes (gardés en local mais hors git) ───────────────────────────
 COMPTE_RENDU_ANALYSE.md
-ecosim_code/simulation/runs/sim.db
-ecosim_code/simulation/runs/
+ecosim_code/TODO.txt
