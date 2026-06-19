@@ -3,8 +3,8 @@ SimulationEngine — façade qui agrège EngineCore, SpeciesRegistry et Snapshot
 
 Toutes les méthodes publiques historiques restent disponibles pour la
 compatibilité ascendante. Les implémentations vivent dans :
-  - simulation/species_registry.py  (spawn, comptage, extinction)
-  - simulation/snapshotter.py       (snapshots WebSocket, rapport)
+  - engine/species_registry.py  (spawn, comptage, extinction)
+  - engine/snapshotter.py       (snapshots WebSocket, rapport)
 """
 
 import logging
@@ -15,11 +15,11 @@ from world.spatial_grid import SpatialGrid
 from monitoring.report import SimulationReport
 from monitoring.logger import SimulationLogger
 from monitoring.death_log import DeathLogger
-from simulation.utils.counting import count_by_species
-from simulation.species_registry import SpeciesRegistry
-from simulation.snapshotter import Snapshotter
-from simulation.snapshot_view import SimulationSnapshot, EntityView
-from simulation.engine_const import DAY_LENGTH, SIM_YEAR
+from engine.utils.counting import count_by_species
+from engine.species_registry import SpeciesRegistry
+from engine.snapshotter import Snapshotter
+from engine.snapshot_view import SimulationSnapshot, EntityView
+from engine.engine_const import DAY_LENGTH, SIM_YEAR
 import entities.rng as _entity_rng_module
 import math as _math
 

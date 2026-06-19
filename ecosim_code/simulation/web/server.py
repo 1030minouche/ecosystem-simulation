@@ -69,7 +69,7 @@ def _render_terrain_arr(db_or_seed, preset: str, world_size: int,
     from PIL import Image
 
     if isinstance(db_or_seed, str):
-        from simulation.recording.replay import ReplayReader
+        from engine.recording.replay import ReplayReader
         reader  = ReplayReader(Path(db_or_seed))
         m       = reader.meta
         world_size = int(m.get("world_width", 500))
@@ -117,7 +117,7 @@ def _get_stored_frame_png(db: str, tick: int) -> bytes | None:
 
 def _render_frame_png_fallback(db: str, tick: int, out_w: int, out_h: int) -> bytes:
     """Fallback : re-rend depuis WorldSnapshot (anciens .db sans table renders)."""
-    from simulation.recording.replay import ReplayReader
+    from engine.recording.replay import ReplayReader
     from web.renderer import render_snapshot_frame
 
     terrain  = _get_terrain_arr(db, out_w, out_h)
@@ -159,7 +159,7 @@ def _get_frame_png(db: str, tick: int, out_w: int, out_h: int) -> bytes:
 
 
 def _read_replay_meta(db: str) -> dict:
-    from simulation.recording.replay import ReplayReader
+    from engine.recording.replay import ReplayReader
     reader = ReplayReader(Path(db))
     m      = reader.meta
     ticks  = reader._keyframe_ticks
@@ -184,7 +184,7 @@ def _read_replay_meta(db: str) -> dict:
 
 def _read_frame_json(db: str, tick: int) -> dict:
     """Données entités en JSON (pour panel info + sélection)."""
-    from simulation.recording.replay import ReplayReader
+    from engine.recording.replay import ReplayReader
     reader = ReplayReader(Path(db))
     snap   = reader.state_at(tick)
     reader.close()
@@ -518,7 +518,7 @@ async def api_prerender(request):
 
 async def _prerender_all(db: str, w: int, h: int) -> None:
     """Tâche asyncio : warm le cache mémoire pour les frames pas encore en cache."""
-    from simulation.recording.replay import ReplayReader
+    from engine.recording.replay import ReplayReader
     reader = ReplayReader(Path(db))
     ticks  = list(reader._keyframe_ticks)
     reader.close()
@@ -654,8 +654,8 @@ def _read_genealogy(db: str, entity_id: int) -> dict:
 
 def _read_day_info(db: str, day: int) -> dict:
     """Snapshot de population au début du jour day (1-indexed)."""
-    from simulation.engine_const import DAY_LENGTH
-    from simulation.recording.replay import ReplayReader
+    from engine.engine_const import DAY_LENGTH
+    from engine.recording.replay import ReplayReader
     target_tick = day * DAY_LENGTH
     reader = ReplayReader(Path(db))
     snap   = reader.state_at(target_tick)
@@ -733,7 +733,7 @@ async def api_stats(request):
 
 def _read_genetics(db: str, tick: int, species: str) -> dict:
     """Calcule diversité génétique depuis la keyframe la plus proche."""
-    from simulation.recording.replay import ReplayReader
+    from engine.recording.replay import ReplayReader
     from entities.genetics import Genome, N_GENES
     import math
     reader = ReplayReader(Path(db))
@@ -912,7 +912,7 @@ async def api_export(request):
 def _render_heatmap_png(db: str, tick: int, species: str,
                          out_w: int = 300, out_h: int = 300) -> bytes:
     """PNG heatmap de densité pour une espèce à un tick donné."""
-    from simulation.recording.replay import ReplayReader
+    from engine.recording.replay import ReplayReader
     from web.renderer import render_heatmap
     from PIL import Image
     import io

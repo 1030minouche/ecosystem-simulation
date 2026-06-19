@@ -1,15 +1,15 @@
 """
-Tests pour simulation/recording/resume.py — reprise de simulation.
+Tests pour engine/recording/resume.py — reprise de simulation.
 """
 import tempfile
 from pathlib import Path
 import pytest
 
 from world.grid import Grid
-from simulation.engine import SimulationEngine
-from simulation.runner import EngineRunner
-from simulation.recording.recorder import Recorder
-from simulation.recording.resume import load_engine_from_db
+from engine.engine import SimulationEngine
+from engine.runner import EngineRunner
+from engine.recording.recorder import Recorder
+from engine.recording.resume import load_engine_from_db
 from entities.rng import rng
 
 

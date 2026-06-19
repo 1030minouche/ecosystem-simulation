@@ -6,7 +6,7 @@ Tests pour simulation/engine.py
   - Un seul objet Species partagé par tous les individus d'une simulation
 """
 import pytest
-from simulation.engine import SimulationEngine, DAY_LENGTH
+from engine.engine import SimulationEngine, DAY_LENGTH
 from world.grid import Grid
 
 

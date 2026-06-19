@@ -1,7 +1,7 @@
 import logging
 import pathlib
 from datetime import datetime
-from simulation.utils.counting import count_by_species
+from engine.utils.counting import count_by_species
 
 logger = logging.getLogger(__name__)
 

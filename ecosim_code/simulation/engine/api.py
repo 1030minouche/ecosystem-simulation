@@ -3,7 +3,7 @@ API Python scriptée pour EcoSim — sans serveur HTTP.
 
 Usage typique (notebook / script de recherche) :
 
-    from simulation.api import Simulation, SimConfig
+    from engine.api import Simulation, SimConfig
 
     cfg = SimConfig(seed=42, grid_size=200, ticks=10_000)
     sim = Simulation(cfg)
@@ -45,7 +45,7 @@ class Simulation:
     def _build(self) -> None:
         from world.grid import Grid
         from world.terrain import generate_terrain
-        from simulation.engine import SimulationEngine
+        from engine.engine import SimulationEngine
 
         cfg = self.config
         grid = Grid(cfg.grid_size, cfg.grid_size)
@@ -53,7 +53,7 @@ class Simulation:
         self._engine = SimulationEngine(grid, seed=cfg.seed)
 
         if cfg.out_path:
-            from simulation.recording.recorder import Recorder
+            from engine.recording.recorder import Recorder
             Path(cfg.out_path).parent.mkdir(parents=True, exist_ok=True)
             self._recorder = Recorder(Path(cfg.out_path),
                                       keyframe_every=cfg.keyframe_every)
@@ -63,7 +63,7 @@ class Simulation:
             if cfg.tags:
                 self._recorder.write_meta("tags", json.dumps(cfg.tags))
 
-        from simulation.runner import EngineRunner
+        from engine.runner import EngineRunner
         self._runner = EngineRunner(self._engine, recorder=self._recorder)
 
     # ── Espèces ───────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ class Simulation:
     def run(self, n_ticks: int,
             on_progress: Callable[[int, dict], None] | None = None) -> "RunSummary":
         """Lance n_ticks ticks et retourne un résumé."""
-        from simulation.runner import RunSummary
+        from engine.runner import RunSummary
         summary = self._runner.run(max_ticks=n_ticks, on_progress=on_progress)
         return summary
 

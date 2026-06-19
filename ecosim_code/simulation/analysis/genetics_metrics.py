@@ -135,7 +135,7 @@ def compute_diversity_at_tick(db_path: Path, tick: int,
 
     Retourne un dict avec He, π, et Fst (si species=None, toutes espèces confondues).
     """
-    from simulation.recording.replay import ReplayReader
+    from engine.recording.replay import ReplayReader
     from entities.genetics import Genome
 
     reader = ReplayReader(db_path)
@@ -172,7 +172,7 @@ def compute_diversity_at_tick(db_path: Path, tick: int,
 def compute_fst_spatial(db_path: Path, tick: int,
                          species: str, n_quadrants: int = 4) -> dict:
     """Fst entre quadrants spatiaux (nord-ouest, nord-est, sud-ouest, sud-est)."""
-    from simulation.recording.replay import ReplayReader
+    from engine.recording.replay import ReplayReader
     from entities.genetics import Genome
 
     reader  = ReplayReader(db_path)

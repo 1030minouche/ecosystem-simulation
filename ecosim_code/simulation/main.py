@@ -22,7 +22,7 @@ parser.add_argument("--port",      type=int,  default=9000)
 args, _ = parser.parse_known_args()
 
 if args.headless:
-    from simulation.headless import run_headless
+    from engine.headless import run_headless
     run_headless(
         ticks=args.ticks,
         seed=args.seed,

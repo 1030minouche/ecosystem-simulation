@@ -94,9 +94,9 @@ class EcoSimApp:
         from pathlib import Path
         from world.grid import Grid
         from world.terrain import generate_terrain
-        from simulation.engine import SimulationEngine
-        from simulation.runner import EngineRunner
-        from simulation.recording.recorder import Recorder
+        from engine.engine import SimulationEngine
+        from engine.runner import EngineRunner
+        from engine.recording.recorder import Recorder
 
         run_frame = self._frames["run"]
 

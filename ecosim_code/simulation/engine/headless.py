@@ -1,7 +1,7 @@
 """
 Mode headless : boucle synchrone sans GUI, aussi vite que possible.
 
-Utilisé par `python -m simulation.main --headless --ticks N [--seed S]
+Utilisé par `python main.py --headless --ticks N [--seed S]
 [--config path] [--out path] [--progress]`.
 """
 
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from simulation.runner import RunSummary
+    from engine.runner import RunSummary
 
 
 def run_headless(
@@ -29,8 +29,8 @@ def run_headless(
     """Lance la simulation en mode headless et retourne un RunSummary."""
     from world.grid import Grid
     from world.terrain import generate_terrain
-    from simulation.engine import SimulationEngine
-    from simulation.runner import EngineRunner
+    from engine.engine import SimulationEngine
+    from engine.runner import EngineRunner
 
     # ── Terrain ──────────────────────────────────────────────────────────────
     grid = Grid(width=500, height=500)
@@ -51,7 +51,7 @@ def run_headless(
     recorder = None
     if out_path:
         try:
-            from simulation.recording.recorder import Recorder
+            from engine.recording.recorder import Recorder
             Path(out_path).parent.mkdir(parents=True, exist_ok=True)
             recorder = Recorder(Path(out_path))
             print(f"[headless] enregistrement -> {out_path}", flush=True)

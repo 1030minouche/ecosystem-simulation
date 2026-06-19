@@ -55,11 +55,11 @@ class SimulationManager:
     def _run(self, config: dict) -> None:
         from world.grid import Grid
         from world.terrain import generate_terrain
-        from simulation.engine import SimulationEngine
-        from simulation.runner import EngineRunner
-        from simulation.recording.recorder import Recorder
+        from engine.engine import SimulationEngine
+        from engine.runner import EngineRunner
+        from engine.recording.recorder import Recorder
         from web.renderer import terrain_arr_from_grid, render_engine_frame, RENDER_W, RENDER_H
-        from simulation.headless import load_diseases
+        from engine.headless import load_diseases
         from pathlib import Path as _Path
         _diseases_dir = _Path(__file__).parent.parent / "species_data" / "diseases"
         if _diseases_dir.exists():
@@ -71,7 +71,7 @@ class SimulationManager:
             out_path.parent.mkdir(parents=True, exist_ok=True)
 
             if config.get("mode") == "infect" and config.get("db_path"):
-                from simulation.recording.resume import load_engine_from_db_at_tick
+                from engine.recording.resume import load_engine_from_db_at_tick
                 from entities.disease import DISEASE_REGISTRY, DiseaseState
                 from datetime import datetime
 
@@ -159,7 +159,7 @@ class SimulationManager:
                 recorder.write_species_params(engine.species_list)
 
             elif config.get("mode") == "extend" and config.get("db_path"):
-                from simulation.recording.resume import load_engine_from_db
+                from engine.recording.resume import load_engine_from_db
                 engine      = load_engine_from_db(Path(config["db_path"]))
                 out_path    = Path(config["db_path"])
                 colors: dict[str, tuple] = {
@@ -208,7 +208,7 @@ class SimulationManager:
                 recorder.write_meta("max_ticks", str(total))
                 recorder.write_species_params(engine.species_list)
                 # Manifeste d'expérience reproductible
-                from simulation.recording.manifest import build_manifest, write_manifest
+                from engine.recording.manifest import build_manifest, write_manifest
                 manifest = build_manifest(
                     seed=config["seed"], grid_size=size,
                     terrain_preset=preset,

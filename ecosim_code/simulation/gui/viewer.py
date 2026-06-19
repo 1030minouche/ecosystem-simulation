@@ -10,7 +10,7 @@ import math
 import time
 import numpy as np
 from PIL import Image, ImageTk
-from simulation.utils.counting import count_by_species
+from engine.utils.counting import count_by_species
 from world.terrain import BIOME_PALETTE
 
 logger = logging.getLogger(__name__)
@@ -747,7 +747,7 @@ class SimViewer:
     # ── Mise à jour HUD ───────────────────────────────────────────────────────
 
     def _update_hud(self):
-        from simulation.engine import DAY_LENGTH, SIM_YEAR
+        from engine.engine import DAY_LENGTH, SIM_YEAR
         # Lecture directe de tick_count — atomique sous GIL, toujours à jour
         # même si le verrou non-bloquant n'a pas été acquis ce frame.
         tick  = self.engine.tick_count
@@ -808,7 +808,7 @@ class SimViewer:
     # ── Boucle d'affichage ────────────────────────────────────────────────────
 
     def _loop(self):
-        from simulation.engine import DAY_LENGTH
+        from engine.engine import DAY_LENGTH
         # Acquisition non-bloquante : si le moteur tient le verrou (batch ×N),
         # on réutilise le snapshot précédent plutôt que de bloquer le thread UI.
         self._snap_updated = False

@@ -33,7 +33,7 @@ def terrain_arr_from_db(db_path: str, out_w: int = RENDER_W, out_h: int = RENDER
     from pathlib import Path
     from world.grid import Grid
     from world.terrain import generate_terrain, BIOME_PALETTE
-    from simulation.recording.replay import ReplayReader
+    from engine.recording.replay import ReplayReader
 
     reader     = ReplayReader(Path(db_path))
     m          = reader.meta

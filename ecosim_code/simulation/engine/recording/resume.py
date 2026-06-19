@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from simulation.engine import SimulationEngine
+    from engine.engine import SimulationEngine
 
 
 def load_engine_from_db_at_tick(db_path: Path, target_tick: int) -> "SimulationEngine":
@@ -46,12 +46,12 @@ def _load_engine_from_row(db_path: Path, tick: int) -> "SimulationEngine":
     import sqlite3
     from world.grid import Grid
     from world.terrain import generate_terrain
-    from simulation.engine import SimulationEngine
+    from engine.engine import SimulationEngine
     from entities.animal import Individual
     from entities.plant import Plant
     from entities.genetics import Genome
     from entities.species import Species
-    from simulation.recording.schema import WorldSnapshot
+    from engine.recording.schema import WorldSnapshot
 
     conn = sqlite3.connect(str(db_path))
     meta = dict(conn.execute("SELECT key, value FROM meta").fetchall())

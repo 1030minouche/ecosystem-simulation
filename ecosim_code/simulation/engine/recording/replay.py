@@ -15,7 +15,7 @@ import sqlite3
 from functools import lru_cache
 from pathlib import Path
 
-from simulation.recording.schema import WorldSnapshot
+from engine.recording.schema import WorldSnapshot
 
 
 class ReplayReader:
@@ -23,7 +23,7 @@ class ReplayReader:
         self._path = path
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
         # Migration automatique vers le schéma courant
-        from simulation.recording.migrations import migrate
+        from engine.recording.migrations import migrate
         migrate(self._conn)
         self._keyframe_ticks: list[int] = self._load_keyframe_ticks()
 

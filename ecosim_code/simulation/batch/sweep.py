@@ -89,8 +89,8 @@ class ParameterSweep:
     def run(self, verbose: bool = True) -> list[SweepResult]:
         from world.grid import Grid
         from world.terrain import generate_terrain
-        from simulation.engine import SimulationEngine
-        from simulation.runner import EngineRunner
+        from engine.engine import SimulationEngine
+        from engine.runner import EngineRunner
 
         self.out_dir.mkdir(parents=True, exist_ok=True)
         base_specs = self._load_species()
@@ -131,7 +131,7 @@ class ParameterSweep:
 
                 recorder = None
                 if db_path:
-                    from simulation.recording.recorder import Recorder
+                    from engine.recording.recorder import Recorder
                     recorder = Recorder(db_path)
                     recorder.write_engine_meta(engine)
                     recorder.write_meta("sweep_params", json.dumps(combo_dict))
