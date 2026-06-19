@@ -130,6 +130,9 @@ class MockGrid:
         self.humidity    = np.full((height, width), 0.5)
         self.altitude    = np.full((height, width), 0.5)
         self.water_depth = np.zeros((height, width))
+        # `nutrients` est désormais garanti par Grid : on l'expose aussi ici
+        # pour que Plant.tick (qui ne fait plus de hasattr) fonctionne sur MockGrid.
+        self.nutrients   = np.ones((height, width), dtype=np.float32)
         # Cellules mock synchronisées
         self.cells = [
             [MockCell(self, x, y) for x in range(width)]

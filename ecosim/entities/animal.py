@@ -257,20 +257,30 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
     # ── Prédateur le plus proche ──────────────────────────────────────────────
 
     def _nearest_predator(self, all_individuals, time_of_day: float) -> tuple:
-        """Retourne (prédateur_le_plus_proche | None, nombre_de_prédateurs_perçus)."""
-        nearest       = None
+        """Retourne (prédateur_le_plus_proche | None, nombre_de_prédateurs_perçus).
+
+        Perf : on hoiste self.x, self.y, self.species.name hors de la boucle ;
+        on réordonne les filtres pour faire d'abord le test cheap (food_sources
+        in frozenset) avant le test plus coûteux (_is_resting) qui paye la
+        fonction. La distance n'est calculée qu'en dernier ressort.
+        """
+        my_sp_name = self.species.name
+        my_x       = self.x
+        my_y       = self.y
         nearest_dist2 = self.species.perception_radius ** 2
         r2            = nearest_dist2
+        nearest       = None
         count         = 0
         for other in all_individuals:
-            if not other.alive or other is self:
+            if other is self or not other.alive:
                 continue
-            if _is_resting(time_of_day, other.species.activity_pattern):
+            other_sp = other.species
+            if my_sp_name not in other_sp.food_sources:
                 continue
-            if self.species.name not in other.species.food_sources:
+            if _is_resting(time_of_day, other_sp.activity_pattern):
                 continue
-            dx    = other.x - self.x
-            dy    = other.y - self.y
+            dx    = other.x - my_x
+            dy    = other.y - my_y
             dist2 = dx*dx + dy*dy
             if dist2 < r2:
                 count += 1

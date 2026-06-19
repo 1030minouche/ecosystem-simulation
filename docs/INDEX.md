@@ -44,7 +44,7 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 | `movement.py` | `MovementMixin` — wander, flee, seek shelter, évitement eau. | ✅ |
 | `feeding.py` | `FeedingMixin` — quête de nourriture par régime (herbi/carni/omni). | ✅ |
 | `reproduction.py` | `ReproductionMixin` — gestation, naissance, transmission du génome. | ✅ |
-| `activity.py` | Rythmes circadiens (`_is_resting`, `_is_pre_rest`). | ✅ |
+| `activity.py` | Rythmes circadiens (`_is_resting`, `_is_pre_rest`) — cache module-level invalidé sur changement de `tod`. | ✅ |
 | `death.py` | `mark_dead()` — finalise une entité et notifie les logs. | ✅ |
 | `rng.py` | `_RNGWrapper` numpy ; point unique d'aléa pour le déterminisme. | ✅ critique |
 

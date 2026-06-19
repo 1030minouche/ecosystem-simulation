@@ -266,15 +266,20 @@ class SimulationEngine:
 
             # Centroïde depuis nearby_inds (r_perc déjà calculé) — élimine
             # la 3e requête spatiale pour les espèces à herd_cohesion > 0.
+            # Perf : une seule passe sur nearby_inds au lieu de [list comp + 2 sums].
             local_centroid = None
             if _sp.herd_cohesion > 0:
-                same = [o for o in nearby_inds
-                        if o is not ind and o.species.name == _sp.name]
-                if same:
-                    local_centroid = (
-                        sum(o.x for o in same) / len(same),
-                        sum(o.y for o in same) / len(same),
-                    )
+                sp_name = _sp.name
+                sx_sum  = 0.0
+                sy_sum  = 0.0
+                n_same  = 0
+                for o in nearby_inds:
+                    if o is not ind and o.species.name == sp_name:
+                        sx_sum += o.x
+                        sy_sum += o.y
+                        n_same += 1
+                if n_same:
+                    local_centroid = (sx_sum / n_same, sy_sum / n_same)
 
             herd_centroids = (
                 {_sp.name: local_centroid} if local_centroid else {}

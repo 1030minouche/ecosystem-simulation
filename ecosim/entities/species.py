@@ -92,6 +92,14 @@ class Species:
         # au lieu de O(k) avec une liste.
         if not isinstance(self.food_sources, frozenset):
             self.food_sources = frozenset(self.food_sources)
+        # Perf : les checks de type sont appelés 300k-500k fois par tick.
+        # On les précalcule une seule fois ici (Species est immuable, type fixé).
+        t = self.type
+        self._is_flying       = t == SpeciesType.FLYING
+        self._is_plant        = t == SpeciesType.PLANT
+        self._is_predator     = t in (SpeciesType.CARNIVORE, SpeciesType.OMNIVORE)
+        self._can_eat_plants  = t in (SpeciesType.HERBIVORE, SpeciesType.OMNIVORE)
+        self._can_eat_animals = t in (SpeciesType.CARNIVORE, SpeciesType.OMNIVORE, SpeciesType.FLYING)
 
     # Compat. ascendante : nocturnal est dérivé de activity_pattern
     @property
@@ -99,19 +107,19 @@ class Species:
         return self.activity_pattern == "nocturnal"
 
     def is_flying(self) -> bool:
-        return self.type == SpeciesType.FLYING
+        return self._is_flying
 
     def is_plant(self) -> bool:
-        return self.type == SpeciesType.PLANT
+        return self._is_plant
 
     def is_predator(self) -> bool:
-        return self.type in (SpeciesType.CARNIVORE, SpeciesType.OMNIVORE)
+        return self._is_predator
 
     def can_eat_plants(self) -> bool:
-        return self.type in (SpeciesType.HERBIVORE, SpeciesType.OMNIVORE)
+        return self._can_eat_plants
 
     def can_eat_animals(self) -> bool:
-        return self.type in (SpeciesType.CARNIVORE, SpeciesType.OMNIVORE, SpeciesType.FLYING)
+        return self._can_eat_animals
 
     # Capacités physiques
     can_swim: bool = False
