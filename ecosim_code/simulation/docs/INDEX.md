@@ -67,6 +67,7 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 |---|---|---|
 | `engine.py` | `SimulationEngine` — façade, agrège grid + species_registry + snapshotter + logs. | ✅ cœur |
 | `engine_const.py` | `DAY_LENGTH = 1200`, `SIM_YEAR = 438 000`. | ✅ |
+| `timescale.py` | `apply_time_acceleration()` — compresse les durées biologiques. | ✅ |
 | `runner.py` | `EngineRunner` — boucle tick + `RunSummary` (réutilisé par headless/web/gui). | ✅ |
 | `headless.py` | `run_headless()` — CLI synchrone sans GUI, lit config JSON, écrit `.db`. | ✅ |
 | `species_registry.py` | `SpeciesRegistry` — spawn/comptage/extinction, pré-calcul cellules valides. | ✅ |

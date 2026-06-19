@@ -2,10 +2,12 @@
 EcoSim — point d'entrée.
 
 Usage:
-  python main.py                             # Interface web localhost:9000
-  python main.py --headless --ticks N        # Mode headless CLI
-  python main.py --port 8765                 # Port custom
-  python main.py --purge-runs --keep 5       # Nettoie runs/ (garde 5 derniers)
+  python main.py                                      # Interface web localhost:9000
+  python main.py --headless --ticks N                 # Mode headless CLI
+  python main.py --headless --ticks N --time-acceleration 10
+                                                      # Biologie 10x plus rapide
+  python main.py --port 8765                          # Port custom
+  python main.py --purge-runs --keep 5                # Nettoie runs/ (garde 5 derniers)
 """
 import argparse
 import logging
@@ -23,6 +25,10 @@ parser.add_argument("--purge-runs",  action="store_true",
                     help="Supprime les .db de runs/ sauf les N plus récents")
 parser.add_argument("--keep",        type=int,  default=5,
                     help="Nombre de runs à conserver (utilisé avec --purge-runs)")
+parser.add_argument("--time-acceleration", type=float, default=1.0,
+                    help="Compresse les durées biologiques (max_age, gestation, "
+                         "cooldowns) par ce facteur. 10.0 = cycles ~10x plus courts. "
+                         "Défaut: 1.0 (pas d'accélération).")
 args, _ = parser.parse_known_args()
 
 if args.purge_runs:
@@ -40,6 +46,7 @@ if args.headless:
         config_path=args.config,
         out_path=args.out,
         progress=args.progress,
+        time_acceleration=args.time_acceleration,
     )
     sys.exit(0)
 

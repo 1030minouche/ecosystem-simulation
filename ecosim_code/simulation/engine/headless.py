@@ -24,6 +24,7 @@ def run_headless(
     config_path: str | None,
     out_path: str | None,
     progress: bool,
+    time_acceleration: float = 1.0,
 ) -> RunSummary:
     """Lance la simulation en mode headless et retourne un RunSummary."""
     from world.grid import Grid
@@ -39,13 +40,14 @@ def run_headless(
     # ── Moteur ───────────────────────────────────────────────────────────────
     engine = SimulationEngine(grid, seed=seed)
     effective_seed = seed if seed is not None else engine.seed
-    print(f"[headless] seed={effective_seed}  ticks={ticks}", flush=True)
+    print(f"[headless] seed={effective_seed}  ticks={ticks}  "
+          f"time_acceleration={time_acceleration}", flush=True)
 
     # ── Espèces ───────────────────────────────────────────────────────────────
     if config_path:
-        _load_species_from_dir(engine, config_path)
+        _load_species_from_dir(engine, config_path, time_acceleration)
     else:
-        _load_default_species(engine)
+        _load_default_species(engine, time_acceleration)
 
     # ── Recorder (optionnel, Phase 2) ─────────────────────────────────────────
     recorder = None
@@ -90,23 +92,27 @@ def run_headless(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _load_default_species(engine) -> None:
+def _load_default_species(engine, time_acceleration: float = 1.0) -> None:
+    from engine.timescale import apply_time_acceleration
     species_dir = os.path.join(os.path.dirname(__file__), "..", "species")
     for path in sorted(glob.glob(os.path.join(species_dir, "*.json"))):
         with open(path, encoding="utf-8") as f:
             spec = json.load(f)
         params = spec["params"]
         params["color"] = tuple(params["color"])
+        params = apply_time_acceleration(params, time_acceleration)
         engine.add_species(params, count=spec["count"])
 
 
-def _load_species_from_dir(engine, path: str) -> None:
+def _load_species_from_dir(engine, path: str, time_acceleration: float = 1.0) -> None:
+    from engine.timescale import apply_time_acceleration
     if os.path.isdir(path):
         for fpath in sorted(glob.glob(os.path.join(path, "*.json"))):
             with open(fpath, encoding="utf-8") as f:
                 spec = json.load(f)
             params = spec["params"]
             params["color"] = tuple(params["color"])
+            params = apply_time_acceleration(params, time_acceleration)
             engine.add_species(params, count=spec["count"])
     else:
         with open(path, encoding="utf-8") as f:
@@ -114,6 +120,7 @@ def _load_species_from_dir(engine, path: str) -> None:
         params = spec.get("params", spec)
         if "color" in params:
             params["color"] = tuple(params["color"])
+        params = apply_time_acceleration(params, time_acceleration)
         engine.add_species(params, count=spec.get("count", 20))
 
 

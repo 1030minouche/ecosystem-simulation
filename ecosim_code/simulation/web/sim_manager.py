@@ -194,11 +194,16 @@ class SimulationManager:
                     return render_engine_frame(eng, terrain_arr, colors, RENDER_W, RENDER_H)
 
                 engine = SimulationEngine(grid, seed=config["seed"])
+                time_acceleration = float(config.get("time_acceleration", 1.0))
+                if time_acceleration != 1.0:
+                    from engine.timescale import apply_time_acceleration
                 for sp in config["species"]:
                     if not sp.get("enabled", True):
                         continue
                     params = dict(sp["params"])
                     params["color"] = tuple(params["color"])
+                    if time_acceleration != 1.0:
+                        params = apply_time_acceleration(params, time_acceleration)
                     engine.add_species(params, count=sp["count"])
 
                 if out_path.exists():
