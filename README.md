@@ -70,8 +70,9 @@ ecosim_code/simulation/
 ├── entities/      agents : animal, plant, genetics, disease, …
 ├── world/         grid, spatial_grid, terrain (Perlin)
 ├── engine/        moteur : engine, runner, headless, recording (SQLite)
-├── analysis/      stats, génétique (Fst/He/π), épidémiologie (R₀) — post-hoc
-├── batch/         sweep de paramètres
+├── research/      outils hors runtime (post-hoc + sweeps batch)
+│   ├── analysis/    stats, génétique (Fst/He/π), épidémiologie (R₀)
+│   └── batch/       sweep de paramètres
 ├── monitoring/    logger, death_log, report
 ├── web/           serveur aiohttp + renderer + SPA JS (interface unique)
 ├── config/        defaults + validator

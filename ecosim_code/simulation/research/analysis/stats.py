@@ -2,7 +2,7 @@
 Agrégation statistique pour réplicats EcoSim.
 
 Usage typique :
-    from analysis.stats import aggregate_replicates, bootstrap_ci
+    from research.analysis.stats import aggregate_replicates, bootstrap_ci
 
     # Depuis plusieurs fichiers .db
     results = aggregate_replicates(["runs/rep0.db", "runs/rep1.db", ...])

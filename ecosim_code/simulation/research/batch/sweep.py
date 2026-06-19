@@ -5,7 +5,7 @@ Permet de lancer automatiquement plusieurs simulations en faisant varier
 un ou plusieurs paramètres, avec réplicats statistiques.
 
 Usage :
-    from batch.sweep import ParameterSweep, SweepParam
+    from research.batch.sweep import ParameterSweep, SweepParam
 
     sweep = ParameterSweep(
         base_species_dir="species/",

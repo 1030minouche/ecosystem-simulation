@@ -98,7 +98,13 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 
 ---
 
-## `analysis/` — métriques scientifiques post-hoc
+## `research/` — outils hors runtime (post-hoc + sweeps)
+
+Tout ce qui se trouve sous `research/` est destiné aux notebooks et scripts
+de recherche — jamais importé par le moteur, le web ou le mode headless.
+Voir `research/README.md` pour les exemples.
+
+### `research/analysis/`
 
 | Fichier | Rôle | Statut |
 |---|---|---|
@@ -107,15 +113,11 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 | `epidemiology.py` | `compute_R0()` empirique depuis un `.db`. | 🧪 hors runtime |
 | `export.py` | CSV/Parquet (populations, life history, génétique, events, spatial). | 🧪 hors runtime |
 
-> Ces modules ne sont jamais importés par le runtime — ils sont destinés aux notebooks/scripts de recherche.
-
----
-
-## `batch/` — sweeps de paramètres
+### `research/batch/`
 
 | Fichier | Rôle | Statut |
 |---|---|---|
-| `sweep.py` | `ParameterSweep` — N simulations × M réplicats, agrégation CSV. | 🧪 jamais importé |
+| `sweep.py` | `ParameterSweep` — N simulations × M réplicats, agrégation CSV. | 🧪 hors runtime |
 
 ---
 
