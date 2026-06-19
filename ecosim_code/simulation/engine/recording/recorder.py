@@ -17,20 +17,18 @@ from __future__ import annotations
 
 import json
 import logging
+import math as _math
 import sqlite3
 import uuid
-
-logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from engine.recording.schema import EntitySnapshot, WorldSnapshot, Event
+from engine.recording.schema import EntitySnapshot, Event, WorldSnapshot
 
 if TYPE_CHECKING:
     from engine.engine import SimulationEngine
 
-
-import math as _math
+logger = logging.getLogger(__name__)
 
 
 def _compute_eco_metrics(engine) -> dict:
@@ -196,7 +194,7 @@ class Recorder:
         c.execute("INSERT OR IGNORE INTO meta(key,value) VALUES ('schema_version','3')")
         c.commit()
 
-    def write_engine_meta(self, engine: "SimulationEngine") -> None:
+    def write_engine_meta(self, engine: SimulationEngine) -> None:
         """Écrit les métadonnées du moteur (seed, dimensions, version)."""
         from version import __version__
         self.write_meta("world_width",  str(engine.grid.width))
@@ -224,7 +222,7 @@ class Recorder:
 
     # ── Callbacks ─────────────────────────────────────────────────────────────
 
-    def on_tick_end(self, engine: "SimulationEngine") -> None:
+    def on_tick_end(self, engine: SimulationEngine) -> None:
         tick = engine.tick_count
         # ── Naissances : accumulation en mémoire ──────────────────────────────
         for baby in getattr(engine, '_last_newborns', ()):
@@ -317,7 +315,7 @@ class Recorder:
 
     # ── Internals ─────────────────────────────────────────────────────────────
 
-    def _write_keyframe(self, engine: "SimulationEngine", tick: int) -> None:
+    def _write_keyframe(self, engine: SimulationEngine, tick: int) -> None:
         plants = tuple(
             EntitySnapshot(
                 id=id(p), species=p.species.name,

@@ -44,5 +44,6 @@ if args.headless:
     sys.exit(0)
 
 # Default: web UI
-from web.server import run as run_web
+from web.server import run as run_web  # noqa: E402 — lazy import after CLI dispatch
+
 run_web(port=args.port)

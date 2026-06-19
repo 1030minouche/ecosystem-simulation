@@ -14,9 +14,13 @@ Usage typique (notebook / script de recherche) :
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from engine.runner import RunSummary
 
 
 @dataclass
@@ -45,6 +49,7 @@ class Simulation:
     def _build(self) -> None:
         from world.grid import Grid
         from world.terrain import generate_terrain
+
         from engine.engine import SimulationEngine
 
         cfg = self.config
@@ -68,7 +73,7 @@ class Simulation:
 
     # ── Espèces ───────────────────────────────────────────────────────────────
 
-    def add_species_from_file(self, path: str | Path) -> "Simulation":
+    def add_species_from_file(self, path: str | Path) -> Simulation:
         with open(path, encoding="utf-8") as f:
             spec = json.load(f)
         params = spec.get("params", spec)
@@ -77,12 +82,12 @@ class Simulation:
         self._engine.add_species(params, count=spec.get("count", 20))
         return self
 
-    def add_species_from_dir(self, directory: str | Path) -> "Simulation":
+    def add_species_from_dir(self, directory: str | Path) -> Simulation:
         for p in sorted(Path(directory).glob("*.json")):
             self.add_species_from_file(p)
         return self
 
-    def add_species(self, params: dict, count: int = 20) -> "Simulation":
+    def add_species(self, params: dict, count: int = 20) -> Simulation:
         self._engine.add_species(params, count=count)
         return self
 
@@ -95,9 +100,8 @@ class Simulation:
             self._recorder.on_tick_end(self._engine)
 
     def run(self, n_ticks: int,
-            on_progress: Callable[[int, dict], None] | None = None) -> "RunSummary":
+            on_progress: Callable[[int, dict], None] | None = None) -> RunSummary:
         """Lance n_ticks ticks et retourne un résumé."""
-        from engine.runner import RunSummary
         summary = self._runner.run(max_ticks=n_ticks, on_progress=on_progress)
         return summary
 
@@ -140,8 +144,8 @@ class Simulation:
         """Retourne un pandas DataFrame avec l'état courant des individus."""
         try:
             import pandas as pd
-        except ImportError:
-            raise ImportError("pandas requis pour populations_dataframe()")
+        except ImportError as exc:
+            raise ImportError("pandas requis pour populations_dataframe()") from exc
         rows = []
         for ind in self._engine.individuals:
             rows.append({

@@ -10,7 +10,6 @@ from __future__ import annotations
 import glob
 import json
 import os
-import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -25,10 +24,11 @@ def run_headless(
     config_path: str | None,
     out_path: str | None,
     progress: bool,
-) -> "RunSummary":
+) -> RunSummary:
     """Lance la simulation en mode headless et retourne un RunSummary."""
     from world.grid import Grid
     from world.terrain import generate_terrain
+
     from engine.engine import SimulationEngine
     from engine.runner import EngineRunner
 
@@ -117,7 +117,7 @@ def _load_species_from_dir(engine, path: str) -> None:
         engine.add_species(params, count=spec.get("count", 20))
 
 
-def load_diseases(diseases_dir: "Path") -> None:
+def load_diseases(diseases_dir: Path) -> None:
     """Charge les fichiers JSON de maladies et peuple DISEASE_REGISTRY."""
     from entities.disease import DISEASE_REGISTRY, DiseaseSpec
     for p in diseases_dir.glob("*.json"):
@@ -125,18 +125,18 @@ def load_diseases(diseases_dir: "Path") -> None:
         DISEASE_REGISTRY[spec.name] = spec
 
 
-def _print_summary(summary: "RunSummary") -> None:
+def _print_summary(summary: RunSummary) -> None:
     print("\n" + "=" * 55)
-    print(f"  Simulation terminée")
+    print("  Simulation terminée")
     print(f"  Ticks simulés  : {summary.ticks_done}")
     print(f"  Durée réelle   : {summary.elapsed_s:.2f} s")
     if summary.elapsed_s > 0:
         print(f"  Ticks/s        : {summary.ticks_done / summary.elapsed_s:.0f}")
-    print(f"\n  Populations finales :")
+    print("\n  Populations finales :")
     for sp, n in sorted(summary.final_populations.items()):
         print(f"    {sp:<25} {n}")
     if summary.death_causes:
-        print(f"\n  Causes de mort :")
+        print("\n  Causes de mort :")
         for cause, n in sorted(summary.death_causes.items(), key=lambda x: -x[1]):
             print(f"    {cause:<25} {n}")
     print("=" * 55 + "\n")

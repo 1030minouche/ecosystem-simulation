@@ -1,11 +1,9 @@
 """
 Tests pour entities/disease.py
 """
-import pytest
-from entities.disease import DiseaseSpec, DiseaseState, DISEASE_REGISTRY, try_infect
-from entities.genetics import Genome
+from entities.disease import DiseaseSpec, DiseaseState, try_infect
 from entities.rng import rng
-from helpers import make_animal_species, MockGrid
+from helpers import make_animal_species
 
 
 def _make_individual(x=0.0, y=0.0, disease_resistance=0.5, species_name="test"):

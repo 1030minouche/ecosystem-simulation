@@ -1,7 +1,9 @@
+import math
 from dataclasses import dataclass
+
 from entities.base import Entity
 from entities.rng import rng
-import math
+
 
 @dataclass
 class Plant(Entity):

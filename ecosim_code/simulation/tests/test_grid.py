@@ -1,10 +1,8 @@
 """
 Tests pour world/grid.py et world/cell.py
 """
-import pytest
-from world.grid import Grid
 from world.cell import Cell
-
+from world.grid import Grid
 
 # ── Grid ─────────────────────────────────────────────────────────────────────
 

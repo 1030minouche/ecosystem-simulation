@@ -8,8 +8,9 @@ la duplication entre le mode headless et le viewer Tk.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
-from typing import Callable, TYPE_CHECKING
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from engine.engine import SimulationEngine
@@ -27,8 +28,8 @@ class RunSummary:
 class EngineRunner:
     def __init__(
         self,
-        engine: "SimulationEngine",
-        recorder: "Recorder | None" = None,
+        engine: SimulationEngine,
+        recorder: Recorder | None = None,
     ) -> None:
         self.engine   = engine
         self.recorder = recorder

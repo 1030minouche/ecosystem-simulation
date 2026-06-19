@@ -11,9 +11,9 @@ un import circulaire avec entities.animal.
 import math
 
 from entities.activity import TICKS_PER_SECOND
+from entities.genetics import Genome
 from entities.rng import rng
 from entities.species import blend_species
-from entities.genetics import Genome
 
 
 def _inherit_genome(parent, offspring, partner=None) -> None:

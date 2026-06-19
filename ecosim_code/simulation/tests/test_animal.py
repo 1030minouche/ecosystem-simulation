@@ -7,10 +7,8 @@ Tests pour entities/animal.py
 """
 import random
 
-import pytest
-from entities.animal import Individual, _is_resting, _is_pre_rest
+from entities.animal import Individual, _is_pre_rest, _is_resting
 from helpers import MockGrid, make_animal_species
-
 
 # ── Rythmes d'activité ───────────────────────────────────────────────────────
 

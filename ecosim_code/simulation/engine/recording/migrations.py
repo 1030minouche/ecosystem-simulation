@@ -5,8 +5,8 @@ Chaque version introduit les tables/colonnes manquantes de façon idempotente.
 Appelé automatiquement par ReplayReader et Recorder au chargement d'un .db.
 """
 from __future__ import annotations
-import sqlite3
 
+import sqlite3
 
 CURRENT_SCHEMA_VERSION = 3
 

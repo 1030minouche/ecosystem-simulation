@@ -5,15 +5,12 @@ Tests pour simulation/engine.py
   - Variabilité inter-simulation (sample_params intégré)
   - Un seul objet Species partagé par tous les individus d'une simulation
 """
-import pytest
-from engine.engine import SimulationEngine, DAY_LENGTH
+from engine.engine import DAY_LENGTH, SimulationEngine
 from world.grid import Grid
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _make_grid(width=40, height=40) -> Grid:
-    import numpy as np
     g = Grid(width, height)
     g.soil_type[:] = "clay"
     g.temperature[:] = 20.0

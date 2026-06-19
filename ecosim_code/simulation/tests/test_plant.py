@@ -6,10 +6,8 @@ Tests pour entities/plant.py
 """
 import random
 
-import pytest
 from entities.plant import Plant
 from helpers import MockGrid, make_plant_species
-
 
 # ── Croissance ───────────────────────────────────────────────────────────────
 

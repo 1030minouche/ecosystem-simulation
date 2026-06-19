@@ -2,8 +2,8 @@
 Tests pour entities/genetics.py
 """
 import json
-import pytest
-from entities.genetics import Genome, N_GENES, GENE_INFLUENCE, GENE_TRAITS
+
+from entities.genetics import GENE_INFLUENCE, GENE_TRAITS, N_GENES, Genome
 from entities.rng import rng
 
 
@@ -41,7 +41,7 @@ class TestRecombination:
         pb = Genome.random()
         children = [Genome.from_parents(pa, pb, mutation_rate=0.0) for _ in range(20)]
         for child in children:
-            for gene, a, b in zip(child.genes, pa.genes, pb.genes):
+            for gene, a, b in zip(child.genes, pa.genes, pb.genes, strict=True):
                 assert gene == a or gene == b
 
     def test_mutation_rate_one_modifies_all_genes(self):

@@ -53,14 +53,16 @@ class SimulationManager:
         return True
 
     def _run(self, config: dict) -> None:
+        from pathlib import Path as _Path
+
+        from engine.engine import SimulationEngine
+        from engine.headless import load_diseases
+        from engine.recording.recorder import Recorder
+        from engine.runner import EngineRunner
         from world.grid import Grid
         from world.terrain import generate_terrain
-        from engine.engine import SimulationEngine
-        from engine.runner import EngineRunner
-        from engine.recording.recorder import Recorder
-        from web.renderer import terrain_arr_from_grid, render_engine_frame, RENDER_W, RENDER_H
-        from engine.headless import load_diseases
-        from pathlib import Path as _Path
+
+        from web.renderer import RENDER_H, RENDER_W, render_engine_frame, terrain_arr_from_grid
         _diseases_dir = _Path(__file__).parent.parent / "species_data" / "diseases"
         if _diseases_dir.exists():
             load_diseases(_diseases_dir)
@@ -71,9 +73,10 @@ class SimulationManager:
             out_path.parent.mkdir(parents=True, exist_ok=True)
 
             if config.get("mode") == "infect" and config.get("db_path"):
+                from datetime import datetime
+
                 from engine.recording.resume import load_engine_from_db_at_tick
                 from entities.disease import DISEASE_REGISTRY, DiseaseState
-                from datetime import datetime
 
                 src_db       = _Path(config["db_path"])
                 target_tick  = int(config.get("tick", 0))

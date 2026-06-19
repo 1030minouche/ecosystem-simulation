@@ -1,6 +1,7 @@
-from dataclasses import dataclass, field, fields as dc_fields
+from dataclasses import dataclass, field
+from dataclasses import fields as dc_fields
 from enum import Enum
-from typing import List
+
 from entities.rng import rng
 
 
@@ -71,7 +72,7 @@ class Species:
     # Comportement (animaux)
     speed: float = 1.0
     perception_radius: float = 5.0
-    food_sources: List[str] = field(default_factory=list)
+    food_sources: list[str] = field(default_factory=list)
 
     # Végétaux
     growth_rate: float = 0.05

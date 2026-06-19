@@ -8,20 +8,21 @@ compatibilité ascendante. Les implémentations vivent dans :
 """
 
 import logging
+import math as _math
 import threading
 import time as _time
+
+import entities.rng as _entity_rng_module
+from monitoring.death_log import DeathLogger
+from monitoring.logger import SimulationLogger
+from monitoring.report import SimulationReport
 from world.grid import Grid
 from world.spatial_grid import SpatialGrid
-from monitoring.report import SimulationReport
-from monitoring.logger import SimulationLogger
-from monitoring.death_log import DeathLogger
-from engine.utils.counting import count_by_species
-from engine.species_registry import SpeciesRegistry
-from engine.snapshotter import Snapshotter
-from engine.snapshot_view import SimulationSnapshot, EntityView
+
 from engine.engine_const import DAY_LENGTH, SIM_YEAR
-import entities.rng as _entity_rng_module
-import math as _math
+from engine.snapshot_view import EntityView, SimulationSnapshot
+from engine.snapshotter import Snapshotter
+from engine.species_registry import SpeciesRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -224,8 +225,10 @@ class SimulationEngine:
         # cell_size fixée dans __init__ — ne pas recalculer chaque tick.
         self._ind_grid.clear()
         self._plant_grid.clear()
-        for ind   in self.individuals: self._ind_grid.insert(ind)
-        for plant in self.plants:      self._plant_grid.insert(plant)
+        for ind in self.individuals:
+            self._ind_grid.insert(ind)
+        for plant in self.plants:
+            self._plant_grid.insert(plant)
         ind_grid   = self._ind_grid
         plant_grid = self._plant_grid
 

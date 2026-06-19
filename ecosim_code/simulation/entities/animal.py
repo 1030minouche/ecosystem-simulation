@@ -20,14 +20,15 @@ avec les tests existants).
 import math as _math
 from dataclasses import dataclass, field
 from typing import ClassVar
+
+from entities.activity import _is_pre_rest, _is_resting  # noqa: F401 — ré-export
 from entities.base import Entity
-from entities.activity import _is_resting, _is_pre_rest  # noqa: F401 — ré-export
-from entities.movement import MovementMixin
-from entities.feeding import FeedingMixin
-from entities.reproduction import ReproductionMixin
 from entities.death import mark_dead
-from entities.rng import rng
+from entities.feeding import FeedingMixin
 from entities.genetics import Genome
+from entities.movement import MovementMixin
+from entities.reproduction import ReproductionMixin
+from entities.rng import rng
 
 
 @dataclass

@@ -6,9 +6,7 @@ Tests pour entities/species.py
 import random
 import statistics
 
-import pytest
-from entities.species import Species, sample_params, _VARIABLE_FLOAT, _VARIABLE_INT
-
+from entities.species import _VARIABLE_FLOAT, _VARIABLE_INT, Species, sample_params
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
 

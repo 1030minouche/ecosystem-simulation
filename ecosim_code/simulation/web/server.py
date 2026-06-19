@@ -64,9 +64,9 @@ def _render_terrain_arr(db_or_seed, preset: str, world_size: int,
     """Génère un ndarray H×W×3 uint8 pour le terrain.
     db_or_seed : int (seed direct) ou str (chemin .db pour lire les méta).
     """
-    from world.grid import Grid
-    from world.terrain import generate_terrain, BIOME_PALETTE
     from PIL import Image
+    from world.grid import Grid
+    from world.terrain import BIOME_PALETTE, generate_terrain
 
     if isinstance(db_or_seed, str):
         from engine.recording.replay import ReplayReader
@@ -118,6 +118,7 @@ def _get_stored_frame_png(db: str, tick: int) -> bytes | None:
 def _render_frame_png_fallback(db: str, tick: int, out_w: int, out_h: int) -> bytes:
     """Fallback : re-rend depuis WorldSnapshot (anciens .db sans table renders)."""
     from engine.recording.replay import ReplayReader
+
     from web.renderer import render_snapshot_frame
 
     terrain  = _get_terrain_arr(db, out_w, out_h)
@@ -130,6 +131,7 @@ def _render_frame_png_fallback(db: str, tick: int, out_w: int, out_h: int) -> by
 
     if snap is None:
         import io
+
         from PIL import Image
         buf = io.BytesIO()
         Image.fromarray(terrain, "RGB").save(buf, format="PNG")
@@ -433,7 +435,8 @@ async def api_runs_tag(request):
             import sqlite3
             conn = sqlite3.connect(str(p))
             conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES ('tag',?)", (tag,))
-            conn.commit(); conn.close()
+            conn.commit()
+            conn.close()
             return web.json_response({"ok": True})
     raise web.HTTPNotFound()
 
@@ -733,9 +736,10 @@ async def api_stats(request):
 
 def _read_genetics(db: str, tick: int, species: str) -> dict:
     """Calcule diversité génétique depuis la keyframe la plus proche."""
-    from engine.recording.replay import ReplayReader
-    from entities.genetics import Genome, N_GENES
     import math
+
+    from engine.recording.replay import ReplayReader
+    from entities.genetics import N_GENES, Genome
     reader = ReplayReader(Path(db))
     snap   = reader.state_at(tick)
     reader.close()
@@ -876,7 +880,8 @@ async def api_epidemic(request):
 
 def _export_csv(db: str) -> str:
     """Exporte les timeseries en CSV."""
-    import csv, io
+    import csv
+    import io
     ts   = _read_timeseries(db)
     buf  = io.StringIO()
     all_sp = sorted({sp for row in ts for sp in row["counts"]})
@@ -912,10 +917,12 @@ async def api_export(request):
 def _render_heatmap_png(db: str, tick: int, species: str,
                          out_w: int = 300, out_h: int = 300) -> bytes:
     """PNG heatmap de densité pour une espèce à un tick donné."""
-    from engine.recording.replay import ReplayReader
-    from web.renderer import render_heatmap
-    from PIL import Image
     import io
+
+    from engine.recording.replay import ReplayReader
+    from PIL import Image
+
+    from web.renderer import render_heatmap
     try:
         reader  = ReplayReader(Path(db))
         m       = reader.meta
@@ -980,7 +987,8 @@ def _build_app() -> web.Application:
 
 
 def run(host: str = "0.0.0.0", port: int = 9000) -> None:
-    import webbrowser, threading
+    import threading
+    import webbrowser
 
     async def _start():
         global _mgr
