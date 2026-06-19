@@ -25,5 +25,5 @@ runs/
 .vscode/
 
 # ── Audits internes (gardés en local mais hors git) ───────────────────────────
-ecosim_code/simulation/docs/internal/
-ecosim_code/TODO.txt
+docs/internal/
+TODO.txt

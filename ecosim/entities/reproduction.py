@@ -1,0 +1,166 @@
+"""
+Mixin de reproduction pour Individual.
+
+Gère la recherche d'un partenaire, la fécondation, la gestation
+et la mise bas (_try_reproduce, _deliver).
+
+Note : les nouveau-nés sont créés via type(self)(...) pour éviter
+un import circulaire avec entities.animal. Chaque baby hérite du type
+`Species` partagé immuable de son parent ; toute la variation génétique
+est portée par le `Genome` (transmis via `_inherit_genome`).
+"""
+
+import math
+
+from ecosim.entities.activity import TICKS_PER_SECOND
+from ecosim.entities.genetics import Genome
+from ecosim.entities.rng import rng
+
+
+def _inherit_genome(parent, offspring, partner=None) -> None:
+    """Donne à l'offspring un génome hérité des deux parents (ou du parent seul)."""
+    if partner is None:
+        partner = getattr(parent, "_gestation_partner", None)
+    if partner is not None and hasattr(partner, "genome"):
+        offspring.genome = Genome.from_parents(
+            parent.genome, partner.genome, parent.species.mutation_rate
+        )
+    else:
+        offspring.genome = Genome.from_parents(
+            parent.genome, parent.genome, parent.species.mutation_rate
+        )
+    offspring._refresh_effective_params()
+
+
+def _spawn_offspring(parent, grid, species, energy_factor: float = 0.5,
+                     spread: float = 2.0) -> object:
+    """Crée un nouveau-né près du parent avec fallback hors eau."""
+    bx = parent.x + rng.uniform(-spread, spread)
+    by = parent.y + rng.uniform(-spread, spread)
+    if not parent.species.can_swim:
+        ibx, iby = int(bx), int(by)
+        if (0 <= ibx < grid.width and 0 <= iby < grid.height
+                and grid.soil_type[iby, ibx] == "water"):
+            bx, by = parent.x, parent.y
+    return type(parent)(
+        species=species,
+        x=bx, y=by,
+        energy=species.energy_start * energy_factor,
+        sex=rng.choice(["male", "female"]),
+        wander_angle=rng.uniform(0, 2 * math.pi),
+        home_x=bx, home_y=by,
+        parent_id=getattr(parent, "uid", -1),
+    )
+
+
+class ReproductionMixin:
+
+    # ── Délivrance des petits (fin de gestation) ──────────────────────────────
+
+    def _deliver(self, grid) -> list:
+        # Chaque baby hérite du type Species partagé : aucune copie ad-hoc
+        # n'est créée. La variation phénotypique passe par le Genome
+        # (transmis dans _inherit_genome puis appliqué via
+        # Individual._refresh_effective_params).
+        partner = getattr(self, "_gestation_partner", None)
+        babies = []
+        for _ in range(self.gestation_count):
+            baby = _spawn_offspring(self, grid, self.species, energy_factor=0.5, spread=2.0)
+            baby.parent_b_id = getattr(partner, "uid", -1) if partner else -1
+            _inherit_genome(self, baby)
+            babies.append(baby)
+        self.n_offspring += len(babies)
+        if partner is not None:
+            partner.n_offspring += len(babies)
+        self.gestation_count    = 0
+        self._gestation_partner = None
+        return babies
+
+    # ── Tentative de reproduction ─────────────────────────────────────────────
+
+    def _try_reproduce(self, all_individuals, grid, n_predators: int = 0) -> list:
+        # Collecte les partenaires candidats dans le rayon de perception
+        candidates = []
+        search_r2 = (self.species.perception_radius * 3.0) ** 2
+
+        for other in all_individuals:
+            if not other.alive or other is self:
+                continue
+            if other.species.name != self.species.name:
+                continue
+            if other.sex == self.sex:
+                continue
+            if other.reproduction_cooldown > 0 or other.gestation_timer > 0:
+                continue
+            if (self.species.sexual_maturity_ticks > 0
+                    and other.age < self.species.sexual_maturity_ticks):
+                continue
+            dx = other.x - self.x
+            dy = other.y - self.y
+            d2 = dx*dx + dy*dy
+            if d2 < search_r2:
+                candidates.append((d2, other))
+
+        if not candidates:
+            self._wander(grid)
+            return []
+
+        # Sélection sexuelle : choisir le partenaire avec l'énergie la plus élevée
+        # parmi les 3 plus proches (réalisme + coût de recherche limité)
+        candidates.sort(key=lambda t: t[0])
+        top3 = [c[1] for c in candidates[:3]]
+        nearest_partner = max(top3, key=lambda o: o.energy)
+
+        # Se déplacer vers le partenaire
+        dx   = nearest_partner.x - self.x
+        dy   = nearest_partner.y - self.y
+        dist = max(math.hypot(dx, dy), 0.01)
+        step = self.species.speed / TICKS_PER_SECOND
+        self.x += (dx / dist) * step
+        self.y += (dy / dist) * step
+
+        if dist >= self.species.perception_radius * 1.5:
+            return []
+
+        # ── Effet de peur sur la reproduction ──────────────────────────────
+        # n_predators est fourni par _nearest_predator pour éviter un double parcours.
+        effective_rate = self.species.reproduction_rate
+        if self.species.fear_factor > 0 and n_predators > 0:
+            effective_rate /= (1.0 + self.species.fear_factor * n_predators)
+
+        if rng.random() >= effective_rate:
+            return []
+
+        # ── Fécondation ────────────────────────────────────────────────────
+        litter = rng.randint(self.species.litter_size_min,
+                             self.species.litter_size_max)
+
+        # Coût énergétique pour les deux parents
+        cost = self.species.energy_start * 0.20
+        self.energy              -= cost
+        nearest_partner.energy   -= cost
+
+        # Le baby hérite du Species partagé du parent. Toute la variation
+        # phénotypique (vitesse, énergie, perception, etc.) est portée par
+        # le Genome, transmis dans _inherit_genome.
+
+        if self.species.gestation_ticks > 0:
+            # Gestation différée
+            self._gestation_partner = nearest_partner  # mémorisé pour héritage
+            self.gestation_timer    = self.species.gestation_ticks
+            self.gestation_count    = litter
+            nearest_partner.reproduction_cooldown = self.species.gestation_ticks
+            return []
+        else:
+            # Naissance instantanée
+            newborns = []
+            for _ in range(litter):
+                baby = _spawn_offspring(self, grid, self.species, energy_factor=0.6, spread=1.0)
+                baby.parent_b_id = getattr(nearest_partner, "uid", -1)
+                _inherit_genome(self, baby, partner=nearest_partner)
+                newborns.append(baby)
+            self.n_offspring += litter
+            nearest_partner.n_offspring += litter
+            self.reproduction_cooldown            = self.species.reproduction_cooldown_length
+            nearest_partner.reproduction_cooldown = self.species.reproduction_cooldown_length
+            return newborns
