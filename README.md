@@ -27,25 +27,19 @@ Cette commande installe les dépendances bornées déclarées dans `pyproject.to
 
 > ⚠️ La base de code vit sous `ecosim_code/simulation/` et utilise des imports relatifs à ce dossier (`from world.grid import …`). Elle n'est pas encore exposée comme un paquet importable nommé `ecosim` ; les commandes de lancement ci-dessous doivent donc être exécutées depuis ce répertoire. Le `pyproject.toml` à la racine sert à figer les dépendances, fournir la configuration `pytest` et `ruff`, et préparer une future ré-architecture en paquet propre.
 
-Prérequis : Python 3.10 ou plus récent. Tkinter est inclus dans la bibliothèque standard.
+Prérequis : Python 3.10 ou plus récent.
 
 ## Comment lancer
 
 Toutes les commandes ci-dessous sont à exécuter depuis `ecosim_code/simulation/`.
 
-- **Interface web (recommandé)** :
+- **Interface web (par défaut)** :
 
   ```bash
   python main.py
   ```
 
   Démarre un serveur local sur `http://localhost:9000` (port modifiable via `--port 8765`).
-
-- **Interface Tkinter (héritée)** :
-
-  ```bash
-  python main.py --tk
-  ```
 
 - **Mode headless / CLI** :
 
@@ -54,6 +48,12 @@ Toutes les commandes ci-dessous sont à exécuter depuis `ecosim_code/simulation
   ```
 
   Flags disponibles : `--ticks N`, `--seed S`, `--config <dossier>`, `--out <chemin.sqlite>`, `--progress`.
+
+- **Purger d'anciens runs** :
+
+  ```bash
+  python main.py --purge-runs --keep 5
+  ```
 
 - **Tests** :
 
@@ -70,11 +70,11 @@ ecosim_code/simulation/
 ├── entities/      agents : animal, plant, genetics, disease, …
 ├── world/         grid, spatial_grid, terrain (Perlin)
 ├── engine/        moteur : engine, runner, headless, recording (SQLite)
-├── analysis/      stats, génétique (Fst/He/π), épidémiologie (R₀) — post-hoc
-├── batch/         sweep de paramètres
+├── research/      outils hors runtime (post-hoc + sweeps batch)
+│   ├── analysis/    stats, génétique (Fst/He/π), épidémiologie (R₀)
+│   └── batch/       sweep de paramètres
 ├── monitoring/    logger, death_log, report
-├── gui/           Tkinter (setup → run → replay) — hérité
-├── web/           serveur aiohttp + renderer + SPA JS
+├── web/           serveur aiohttp + renderer + SPA JS (interface unique)
 ├── config/        defaults + validator
 ├── docs/          ODD_protocol.md, parameters.md, INDEX.md
 └── tests/         153 tests pytest

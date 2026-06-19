@@ -3,7 +3,6 @@ SimulationSnapshot : vue immuable de l'état de simulation pour le viewer.
 """
 
 from dataclasses import dataclass
-import numpy as np
 
 
 @dataclass(frozen=True)

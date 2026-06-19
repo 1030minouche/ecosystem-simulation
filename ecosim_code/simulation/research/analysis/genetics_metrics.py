@@ -14,7 +14,6 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +68,7 @@ def nucleotide_diversity(genomes: list) -> float:
             g1, g2 = genomes[i], genomes[j]
             all_genes_1 = g1.genes + g1.neutral_genes
             all_genes_2 = g2.genes + g2.neutral_genes
-            dist = sum((a - b) ** 2 for a, b in zip(all_genes_1, all_genes_2))
+            dist = sum((a - b) ** 2 for a, b in zip(all_genes_1, all_genes_2, strict=True))
             total_dist += math.sqrt(dist / len(all_genes_1))
             count += 1
     return total_dist / count if count else 0.0
@@ -91,7 +90,7 @@ def fst(pop_a: list, pop_b: list) -> float:
         fa = _allele_freqs(va)
         fb = _allele_freqs(vb)
         # Fréquences agrégées (taille égale)
-        f_total = [(a + b) / 2.0 for a, b in zip(fa, fb)]
+        f_total = [(a + b) / 2.0 for a, b in zip(fa, fb, strict=True)]
         ht = 1.0 - sum(p * p for p in f_total)
         hs = 0.5 * (
             (1.0 - sum(p * p for p in fa)) +
@@ -114,7 +113,7 @@ def effective_population_size(allele_freqs_t0: list[float],
         return float("inf")
     # Variance de Fc (Waples 1989)
     fc_vals = []
-    for p0, p1 in zip(allele_freqs_t0, allele_freqs_t1):
+    for p0, p1 in zip(allele_freqs_t0, allele_freqs_t1, strict=True):
         if 0 < p0 < 1 and 0 < p1 < 1:
             fc = (p1 - p0) ** 2 / ((p0 + p1) / 2 * (1 - (p0 + p1) / 2) + 1e-9)
             fc_vals.append(fc)

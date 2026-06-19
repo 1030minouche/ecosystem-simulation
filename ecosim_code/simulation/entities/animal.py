@@ -20,14 +20,15 @@ avec les tests existants).
 import math as _math
 from dataclasses import dataclass, field
 from typing import ClassVar
+
+from entities.activity import _is_pre_rest, _is_resting  # noqa: F401 — ré-export
 from entities.base import Entity
-from entities.activity import _is_resting, _is_pre_rest  # noqa: F401 — ré-export
-from entities.movement import MovementMixin
-from entities.feeding import FeedingMixin
-from entities.reproduction import ReproductionMixin
 from entities.death import mark_dead
-from entities.rng import rng
+from entities.feeding import FeedingMixin
 from entities.genetics import Genome
+from entities.movement import MovementMixin
+from entities.reproduction import ReproductionMixin
+from entities.rng import rng
 
 
 @dataclass
@@ -38,10 +39,12 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
     explore_x: float = -1.0
     explore_y: float = -1.0
 
-    # Gestation : ticks restants avant la naissance + nombre de petits attendus
+    # Gestation : ticks restants avant la naissance + nombre de petits attendus.
+    # Le baby hérite du Species partagé (immuable) ; aucune Species ad-hoc
+    # n'est plus créée à la fécondation depuis la suppression de blend_species
+    # (la variation phénotypique passe par le Genome).
     gestation_timer: int = 0
     gestation_count: int = 0
-    gestation_species: object = None  # Species pré-calculé au moment de la fécondation
 
     # Territoire natal (-1 = non défini)
     home_x: float = -1.0

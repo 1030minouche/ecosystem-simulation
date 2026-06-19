@@ -8,6 +8,7 @@ Interface identique au module `random` pour faciliter la migration.
 """
 
 from __future__ import annotations
+
 import numpy as np
 
 
@@ -18,7 +19,7 @@ class _RNGWrapper:
     def reset(self, seed: int | None = None) -> None:
         self._g = np.random.default_rng(seed)
 
-    def fork(self, seed: int | None = None) -> "_RNGWrapper":
+    def fork(self, seed: int | None = None) -> _RNGWrapper:
         """Crée un nouveau wrapper indépendant (pour les simulations parallèles)."""
         child_seed = seed if seed is not None else int(self._g.integers(0, 2**31))
         return _RNGWrapper(child_seed)

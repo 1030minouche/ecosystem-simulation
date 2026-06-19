@@ -89,10 +89,14 @@ class MockCell:
         g, x, y = object.__getattribute__(self, "_grid"), \
                   object.__getattribute__(self, "_x"), \
                   object.__getattribute__(self, "_y")
-        if name == "soil_type":   return g.soil_type[y, x]
-        if name == "temperature": return float(g.temperature[y, x])
-        if name == "humidity":    return float(g.humidity[y, x])
-        if name == "water_depth": return float(g.water_depth[y, x])
+        if name == "soil_type":
+            return g.soil_type[y, x]
+        if name == "temperature":
+            return float(g.temperature[y, x])
+        if name == "humidity":
+            return float(g.humidity[y, x])
+        if name == "water_depth":
+            return float(g.water_depth[y, x])
         raise AttributeError(name)
 
     def __setattr__(self, name: str, value):
@@ -103,11 +107,16 @@ class MockCell:
         except AttributeError:
             object.__setattr__(self, name, value)
             return
-        if name == "soil_type":   g.soil_type[y, x]   = value
-        elif name == "temperature": g.temperature[y, x] = value
-        elif name == "humidity":    g.humidity[y, x]    = value
-        elif name == "water_depth": g.water_depth[y, x] = value
-        else:                       object.__setattr__(self, name, value)
+        if name == "soil_type":
+            g.soil_type[y, x] = value
+        elif name == "temperature":
+            g.temperature[y, x] = value
+        elif name == "humidity":
+            g.humidity[y, x] = value
+        elif name == "water_depth":
+            g.water_depth[y, x] = value
+        else:
+            object.__setattr__(self, name, value)
 
 
 class MockGrid:

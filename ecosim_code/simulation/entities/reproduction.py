@@ -5,15 +5,16 @@ Gère la recherche d'un partenaire, la fécondation, la gestation
 et la mise bas (_try_reproduce, _deliver).
 
 Note : les nouveau-nés sont créés via type(self)(...) pour éviter
-un import circulaire avec entities.animal.
+un import circulaire avec entities.animal. Chaque baby hérite du type
+`Species` partagé immuable de son parent ; toute la variation génétique
+est portée par le `Genome` (transmis via `_inherit_genome`).
 """
 
 import math
 
 from entities.activity import TICKS_PER_SECOND
-from entities.rng import rng
-from entities.species import blend_species
 from entities.genetics import Genome
+from entities.rng import rng
 
 
 def _inherit_genome(parent, offspring, partner=None) -> None:
@@ -57,11 +58,14 @@ class ReproductionMixin:
     # ── Délivrance des petits (fin de gestation) ──────────────────────────────
 
     def _deliver(self, grid) -> list:
-        baby_sp = self.gestation_species or self.species
+        # Chaque baby hérite du type Species partagé : aucune copie ad-hoc
+        # n'est créée. La variation phénotypique passe par le Genome
+        # (transmis dans _inherit_genome puis appliqué via
+        # Individual._refresh_effective_params).
         partner = getattr(self, "_gestation_partner", None)
         babies = []
         for _ in range(self.gestation_count):
-            baby = _spawn_offspring(self, grid, baby_sp, energy_factor=0.5, spread=2.0)
+            baby = _spawn_offspring(self, grid, self.species, energy_factor=0.5, spread=2.0)
             baby.parent_b_id = getattr(partner, "uid", -1) if partner else -1
             _inherit_genome(self, baby)
             babies.append(baby)
@@ -69,7 +73,6 @@ class ReproductionMixin:
         if partner is not None:
             partner.n_offspring += len(babies)
         self.gestation_count    = 0
-        self.gestation_species  = None
         self._gestation_partner = None
         return babies
 
@@ -137,23 +140,22 @@ class ReproductionMixin:
         self.energy              -= cost
         nearest_partner.energy   -= cost
 
-        # Params du bébé = moyenne des deux parents + légère mutation
-        baby_sp = blend_species(self.species, nearest_partner.species,
-                                mutation_rate=self.species.mutation_rate)
+        # Le baby hérite du Species partagé du parent. Toute la variation
+        # phénotypique (vitesse, énergie, perception, etc.) est portée par
+        # le Genome, transmis dans _inherit_genome.
 
         if self.species.gestation_ticks > 0:
             # Gestation différée
             self._gestation_partner = nearest_partner  # mémorisé pour héritage
             self.gestation_timer    = self.species.gestation_ticks
             self.gestation_count    = litter
-            self.gestation_species  = baby_sp
             nearest_partner.reproduction_cooldown = self.species.gestation_ticks
             return []
         else:
             # Naissance instantanée
             newborns = []
             for _ in range(litter):
-                baby = _spawn_offspring(self, grid, baby_sp, energy_factor=0.6, spread=1.0)
+                baby = _spawn_offspring(self, grid, self.species, energy_factor=0.6, spread=1.0)
                 baby.parent_b_id = getattr(nearest_partner, "uid", -1)
                 _inherit_genome(self, baby, partner=nearest_partner)
                 newborns.append(baby)

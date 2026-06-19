@@ -10,8 +10,6 @@ Regroupe toutes les méthodes liées au mouvement :
 
 import math
 
-import numpy as np
-
 from entities.activity import TICKS_PER_SECOND
 from entities.rng import rng
 
@@ -42,7 +40,7 @@ class MovementMixin:
                 ex_arr = rng._g.uniform(2, grid.width  - 3, 15)
                 ey_arr = rng._g.uniform(2, grid.height - 3, 15)
                 found = False
-                for ex, ey in zip(ex_arr, ey_arr):
+                for ex, ey in zip(ex_arr, ey_arr, strict=True):
                     if grid.soil_type[int(ey), int(ex)] != "water":
                         self.explore_x, self.explore_y = float(ex), float(ey)
                         found = True

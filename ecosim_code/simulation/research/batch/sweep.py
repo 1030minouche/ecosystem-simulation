@@ -5,7 +5,7 @@ Permet de lancer automatiquement plusieurs simulations en faisant varier
 un ou plusieurs paramètres, avec réplicats statistiques.
 
 Usage :
-    from batch.sweep import ParameterSweep, SweepParam
+    from research.batch.sweep import ParameterSweep, SweepParam
 
     sweep = ParameterSweep(
         base_species_dir="species/",
@@ -23,7 +23,7 @@ import copy
 import itertools
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -87,10 +87,10 @@ class ParameterSweep:
         return modified
 
     def run(self, verbose: bool = True) -> list[SweepResult]:
-        from world.grid import Grid
-        from world.terrain import generate_terrain
         from engine.engine import SimulationEngine
         from engine.runner import EngineRunner
+        from world.grid import Grid
+        from world.terrain import generate_terrain
 
         self.out_dir.mkdir(parents=True, exist_ok=True)
         base_specs = self._load_species()
@@ -101,7 +101,7 @@ class ParameterSweep:
 
         run_idx = 0
         for combo in grid_combos:
-            combo_dict = dict(zip(param_names, combo))
+            combo_dict = dict(zip(param_names, combo, strict=True))
             specs = base_specs
             for name, value in combo_dict.items():
                 specs = self._apply_param(specs, name, value)
@@ -164,8 +164,8 @@ class ParameterSweep:
         """Retourne un pandas DataFrame résumant toutes les runs."""
         try:
             import pandas as pd
-        except ImportError:
-            raise ImportError("pandas requis pour summary_dataframe()")
+        except ImportError as exc:
+            raise ImportError("pandas requis pour summary_dataframe()") from exc
         rows = []
         for r in self.results:
             row = dict(r.param_values)

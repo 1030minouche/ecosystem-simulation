@@ -3,6 +3,7 @@ Snapshotter : génération de snapshots WebSocket et de rapports.
 """
 
 import numpy as np
+
 from engine.engine_const import DAY_LENGTH, SIM_YEAR
 
 

@@ -8,6 +8,7 @@ Résolution de sortie fixe : RENDER_W × RENDER_H pixels.
 from __future__ import annotations
 
 import io
+
 import numpy as np
 from PIL import Image
 
@@ -31,9 +32,10 @@ def terrain_arr_from_grid(grid, out_w: int = RENDER_W, out_h: int = RENDER_H) ->
 def terrain_arr_from_db(db_path: str, out_w: int = RENDER_W, out_h: int = RENDER_H) -> np.ndarray:
     """Recrée le terrain depuis les méta d'un .db → ndarray H×W×3 uint8."""
     from pathlib import Path
-    from world.grid import Grid
-    from world.terrain import generate_terrain, BIOME_PALETTE
+
     from engine.recording.replay import ReplayReader
+    from world.grid import Grid
+    from world.terrain import BIOME_PALETTE, generate_terrain
 
     reader     = ReplayReader(Path(db_path))
     m          = reader.meta
@@ -90,8 +92,10 @@ def _draw_entities(arr: np.ndarray,
         cx = int(np.clip(round(ind.x * sx), 2, out_w - 3))
         cy = int(np.clip(round(ind.y * sy), 2, out_h - 3))
         if getattr(ind, "is_infectious", False):
-            hx0 = max(0, cx - 3); hx1 = min(out_w, cx + 4)
-            hy0 = max(0, cy - 3); hy1 = min(out_h, cy + 4)
+            hx0 = max(0, cx - 3)
+            hx1 = min(out_w, cx + 4)
+            hy0 = max(0, cy - 3)
+            hy1 = min(out_h, cy + 4)
             arr[hy0:hy1, hx0:hx1] = (180, 80, 0)
         arr[cy - 2:cy + 3, cx - 2:cx + 3] = col
 
@@ -99,8 +103,9 @@ def _draw_entities(arr: np.ndarray,
 def render_heatmap(snap, world_w: int, world_h: int, species: str,
                    out_w: int = 300, out_h: int = 300) -> bytes:
     """Heatmap de densité KDE pour une espèce à partir d'un WorldSnapshot → PNG bytes."""
-    from PIL import Image
     import io as _io
+
+    from PIL import Image
 
     xs = np.array([e.x for e in snap.individuals if e.alive and e.species == species], dtype=np.float32)
     ys = np.array([e.y for e in snap.individuals if e.alive and e.species == species], dtype=np.float32)

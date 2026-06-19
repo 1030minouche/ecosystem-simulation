@@ -2,6 +2,7 @@
 Tests pour monitoring/death_log.py — vérification de cause_counts.
 """
 import types
+
 import pytest
 from monitoring.death_log import DeathLogger
 

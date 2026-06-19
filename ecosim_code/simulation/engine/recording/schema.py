@@ -7,9 +7,9 @@ et les événements discrets (naissance, mort, déplacement).
 
 from __future__ import annotations
 
-import json
 import gzip
-from dataclasses import dataclass, asdict
+import json
+from dataclasses import asdict, dataclass
 from typing import Literal
 
 
@@ -48,7 +48,7 @@ class WorldSnapshot:
         return gzip.compress(json.dumps(data, separators=(",", ":")).encode())
 
     @classmethod
-    def from_blob(cls, blob: bytes) -> "WorldSnapshot":
+    def from_blob(cls, blob: bytes) -> WorldSnapshot:
         data = json.loads(gzip.decompress(blob))
 
         def _es(d: dict) -> EntitySnapshot:
@@ -85,6 +85,6 @@ class Event:
                           separators=(",", ":"))
 
     @classmethod
-    def from_json(cls, s: str) -> "Event":
+    def from_json(cls, s: str) -> Event:
         d = json.loads(s)
         return cls(**d)

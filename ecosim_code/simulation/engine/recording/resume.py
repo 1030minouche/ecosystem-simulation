@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from engine.engine import SimulationEngine
 
 
-def load_engine_from_db_at_tick(db_path: Path, target_tick: int) -> "SimulationEngine":
+def load_engine_from_db_at_tick(db_path: Path, target_tick: int) -> SimulationEngine:
     """Comme load_engine_from_db mais charge la keyframe au plus proche de target_tick."""
     import sqlite3
     conn = sqlite3.connect(str(db_path))
@@ -25,7 +25,7 @@ def load_engine_from_db_at_tick(db_path: Path, target_tick: int) -> "SimulationE
     return _load_engine_from_row(db_path, row[0])
 
 
-def load_engine_from_db(db_path: Path) -> "SimulationEngine":
+def load_engine_from_db(db_path: Path) -> SimulationEngine:
     """
     Reconstruit un SimulationEngine depuis la dernière keyframe d'un .db.
     Retourne le moteur prêt à tourner depuis le tick suivant.
@@ -41,16 +41,18 @@ def load_engine_from_db(db_path: Path) -> "SimulationEngine":
     return _load_engine_from_row(db_path, row[0])
 
 
-def _load_engine_from_row(db_path: Path, tick: int) -> "SimulationEngine":
+def _load_engine_from_row(db_path: Path, tick: int) -> SimulationEngine:
     """Reconstruit le moteur depuis la keyframe au tick donné."""
     import sqlite3
+
+    from entities.animal import Individual
+    from entities.genetics import Genome
+    from entities.plant import Plant
+    from entities.species import Species
     from world.grid import Grid
     from world.terrain import generate_terrain
+
     from engine.engine import SimulationEngine
-    from entities.animal import Individual
-    from entities.plant import Plant
-    from entities.genetics import Genome
-    from entities.species import Species
     from engine.recording.schema import WorldSnapshot
 
     conn = sqlite3.connect(str(db_path))

@@ -9,8 +9,8 @@ Fonctionne pour les herbivores (cibles : plantes), les carnivores
 import math
 
 from entities.activity import TICKS_PER_SECOND, _is_resting
-from entities.rng import rng
 from entities.death import mark_dead
+from entities.rng import rng
 
 
 def _maybe_food_disease(individual) -> None:

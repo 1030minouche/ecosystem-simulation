@@ -5,7 +5,7 @@ R₀ empirique : nombre moyen de nouvelles infections causées par un individu
 infectieux pendant toute sa période contagieuse.
 
 Usage :
-    from analysis.epidemiology import compute_R0
+    from research.analysis.epidemiology import compute_R0
     r0 = compute_R0("runs/sim.db", disease_name="grippe")
 """
 from __future__ import annotations

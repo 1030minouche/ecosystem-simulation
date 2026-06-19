@@ -3,6 +3,7 @@ import logging
 import math
 import pathlib
 from datetime import datetime
+
 from engine.utils.counting import count_by_species
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ class SimulationReport:
                        [(i.species.name, i.species.type, i.energy, i.age) for i in individuals]
 
         species_data = {}
-        for name, stype, energy, extra in all_entities:
+        for name, stype, energy, _extra in all_entities:
             if name not in species_data:
                 species_data[name] = {
                     "count": 0,
@@ -177,25 +178,25 @@ class SimulationReport:
             for sp, count in final_populations.items():
                 f.write(f"  {sp:20} : {count} individus\n")
 
-            f.write(f"\n── BIODIVERSITÉ ──\n")
+            f.write("\n── BIODIVERSITÉ ──\n")
             f.write(f"  Indice de Shannon   : {shannon}\n")
             f.write(f"  Espèces survivantes : {', '.join(report['summary']['species_survived']) or 'aucune'}\n")
             f.write(f"  Espèces éteintes    : {', '.join(report['summary']['species_extinct']) or 'aucune'}\n")
 
-            f.write(f"\n── RECORDS PAR ESPÈCE ──\n")
+            f.write("\n── RECORDS PAR ESPÈCE ──\n")
             for name, stats in self.species_stats.items():
                 f.write(f"\n  {name} ({stats['type']})\n")
                 f.write(f"    Population max : {stats['peak_population']} (tick {stats['peak_tick']})\n")
                 if stats['extinct_tick']:
                     f.write(f"    Extinction     : tick {stats['extinct_tick']}\n")
                 else:
-                    f.write(f"    Statut         : survivant\n")
+                    f.write("    Statut         : survivant\n")
 
-            f.write(f"\n── ÉVÉNEMENTS ──\n")
+            f.write("\n── ÉVÉNEMENTS ──\n")
             for ev in self.events:
                 f.write(f"  [Tick {ev['tick']:5}] {ev['type']} — {ev.get('species', ev.get('details', ''))}\n")
 
-            f.write(f"\n── ÉVOLUTION DES POPULATIONS DANS LE TEMPS ──\n\n")
+            f.write("\n── ÉVOLUTION DES POPULATIONS DANS LE TEMPS ──\n\n")
             all_species = sorted(set(
                 name
                 for snapshot in self.history

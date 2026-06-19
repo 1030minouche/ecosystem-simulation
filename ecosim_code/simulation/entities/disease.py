@@ -4,7 +4,6 @@ Modèle SEIR simplifié : Susceptible → Exposed → Infected → Recovered (�
 """
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -14,7 +13,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from entities.animal import Individual
 
-DISEASE_REGISTRY: dict[str, "DiseaseSpec"] = {}
+DISEASE_REGISTRY: dict[str, DiseaseSpec] = {}
 
 
 @dataclass
@@ -35,14 +34,15 @@ class DiseaseSpec:
     lineage_id: int = 0
 
     @classmethod
-    def from_dict(cls, d: dict) -> "DiseaseSpec":
+    def from_dict(cls, d: dict) -> DiseaseSpec:
         known = {f.name for f in cls.__dataclass_fields__.values()}
         return cls(**{k: v for k, v in d.items() if k in known})
 
-    def mutate(self) -> "DiseaseSpec":
+    def mutate(self) -> DiseaseSpec:
         """Retourne une copie légèrement mutée du pathogène (si mutation_rate_pathogen > 0)."""
-        from entities.rng import rng
         import copy
+
+        from entities.rng import rng
         mutant = copy.copy(self)
         mutant.lineage_id = self.lineage_id + 1
         mutant.name = self.name  # garde le même nom (même maladie, souche différente)
@@ -66,9 +66,9 @@ class DiseaseState:
     original_max_speed: float = 0.0
     # Souche du pathogène portée par cet hôte (lignée propre à l'individu).
     # Si None, retomber sur la souche de référence dans DISEASE_REGISTRY.
-    strain: "DiseaseSpec | None" = None
+    strain: DiseaseSpec | None = None
 
-    def tick(self, individual: "Individual", spec: DiseaseSpec) -> str:
+    def tick(self, individual: Individual, spec: DiseaseSpec) -> str:
         """Avance d'un tick. Retourne 'alive' ou 'dead'."""
         from entities.rng import rng
         self.ticks_in_state += 1
@@ -111,7 +111,7 @@ class DiseaseState:
         return "alive"
 
 
-def try_infect(source: "Individual", target: "Individual",
+def try_infect(source: Individual, target: Individual,
                spec: DiseaseSpec) -> bool:
     """Tente une transmission de source à target. Retourne True si infection.
 

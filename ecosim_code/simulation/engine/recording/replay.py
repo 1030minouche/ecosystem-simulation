@@ -77,7 +77,7 @@ class ReplayReader:
                 hi = mid - 1
         return best
 
-    @lru_cache(maxsize=8)
+    @lru_cache(maxsize=8)  # noqa: B019 — un ReplayReader vit le temps d'une session, leak borné
     def _load_keyframe(self, tick: int) -> WorldSnapshot:
         row = self._conn.execute(
             "SELECT data_blob FROM keyframes WHERE tick = ?", (tick,)

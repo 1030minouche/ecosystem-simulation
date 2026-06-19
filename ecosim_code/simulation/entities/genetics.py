@@ -13,7 +13,7 @@ from entities.rng import rng
 
 # circular-import-guard: Species uses genetics.Genome; genetics references Species for hints only.
 if TYPE_CHECKING:
-    from entities.species import Species
+    pass
 
 N_GENES         = 8   # gènes à effet phénotypique
 N_NEUTRAL_GENES = 20  # gènes neutres (sans effet, pour mesurer la dérive)
@@ -42,18 +42,18 @@ class Genome:
     neutral_genes: list[float] = field(default_factory=lambda: [0.0] * N_NEUTRAL_GENES)
 
     @classmethod
-    def random(cls) -> "Genome":
+    def random(cls) -> Genome:
         return cls(
             genes         = [rng.uniform(-1.0, 1.0) for _ in range(N_GENES)],
             neutral_genes = [rng.uniform(-1.0, 1.0) for _ in range(N_NEUTRAL_GENES)],
         )
 
     @classmethod
-    def from_parents(cls, parent_a: "Genome", parent_b: "Genome",
-                     mutation_rate: float) -> "Genome":
+    def from_parents(cls, parent_a: Genome, parent_b: Genome,
+                     mutation_rate: float) -> Genome:
         """Recombinaison mendélienne uniforme + mutation gaussienne."""
         child_genes = []
-        for a, b in zip(parent_a.genes, parent_b.genes):
+        for a, b in zip(parent_a.genes, parent_b.genes, strict=True):
             gene = a if rng.random() < 0.5 else b
             if rng.random() < mutation_rate:
                 gene += rng.gauss(0.0, 0.15)
@@ -61,7 +61,7 @@ class Genome:
             child_genes.append(gene)
         # Gènes neutres : même recombinaison, mutation légèrement plus élevée
         child_neutral = []
-        for a, b in zip(parent_a.neutral_genes, parent_b.neutral_genes):
+        for a, b in zip(parent_a.neutral_genes, parent_b.neutral_genes, strict=True):
             gene = a if rng.random() < 0.5 else b
             if rng.random() < mutation_rate * 1.5:
                 gene += rng.gauss(0.0, 0.10)
@@ -78,23 +78,23 @@ class Genome:
                 params[trait] = params[trait] * factor
         return params
 
-    def genetic_distance(self, other: "Genome") -> float:
+    def genetic_distance(self, other: Genome) -> float:
         """Distance euclidienne normalisée entre deux génomes (0=identique, 1=max)."""
-        diffs = [(a - b) ** 2 for a, b in zip(self.genes, other.genes)]
+        diffs = [(a - b) ** 2 for a, b in zip(self.genes, other.genes, strict=True)]
         return (sum(diffs) / N_GENES) ** 0.5 / (2 ** 0.5)
 
     def to_list(self) -> list[float]:
         return list(self.genes)
 
     @classmethod
-    def from_list(cls, lst: list[float]) -> "Genome":
+    def from_list(cls, lst: list[float]) -> Genome:
         return cls(genes=list(lst))
 
     def to_json(self) -> str:
         return json.dumps({"g": self.genes, "n": self.neutral_genes})
 
     @classmethod
-    def from_json(cls, s: str) -> "Genome":
+    def from_json(cls, s: str) -> Genome:
         if not s:
             return cls.random()
         data = json.loads(s)

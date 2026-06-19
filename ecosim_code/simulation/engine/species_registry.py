@@ -5,10 +5,10 @@ Registre des espèces : spawn, comptage, extinction, pré-calcul des cellules va
 import logging
 
 import numpy as np
-from entities.rng import rng as _ent_rng
-from entities.species import Species, sample_params
 from entities.animal import Individual
 from entities.plant import Plant
+from entities.rng import rng as _ent_rng
+from entities.species import Species, sample_params
 
 logger = logging.getLogger(__name__)
 

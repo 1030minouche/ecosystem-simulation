@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 from entities.species import Species
 
 

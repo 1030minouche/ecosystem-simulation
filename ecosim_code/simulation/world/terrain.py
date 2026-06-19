@@ -1,7 +1,9 @@
-import os
 import json
+import os
+
 import numpy as np
 from noise import pnoise2
+
 from world.grid import Grid
 
 _LAKE_WATER_LEVEL = 0.20
@@ -233,7 +235,7 @@ def save_terrain(grid: Grid, filepath: str) -> None:
 
 
 def load_terrain(grid: Grid, filepath: str) -> None:
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(filepath, encoding="utf-8") as f:
         data = json.load(f)
     grid.altitude = np.array(data["altitude"], dtype=float)
     grid.humidity = np.array(data["humidity"], dtype=float)

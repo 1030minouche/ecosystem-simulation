@@ -26,7 +26,7 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 
 | Fichier | Rôle | Statut |
 |---|---|---|
-| `main.py` | Point d'entrée CLI : route vers `--headless`, `--tk`, ou serveur web (par défaut). | ✅ |
+| `main.py` | Point d'entrée CLI : route vers `--headless`, `--purge-runs`, ou serveur web (par défaut). | ✅ |
 | `version.py` | `__version__ = "0.5.0"` — lu par `engine/recording/manifest.py` et `recorder.py`. | ✅ |
 
 ---
@@ -67,6 +67,7 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 |---|---|---|
 | `engine.py` | `SimulationEngine` — façade, agrège grid + species_registry + snapshotter + logs. | ✅ cœur |
 | `engine_const.py` | `DAY_LENGTH = 1200`, `SIM_YEAR = 438 000`. | ✅ |
+| `timescale.py` | `apply_time_acceleration()` — compresse les durées biologiques. | ✅ |
 | `runner.py` | `EngineRunner` — boucle tick + `RunSummary` (réutilisé par headless/web/gui). | ✅ |
 | `headless.py` | `run_headless()` — CLI synchrone sans GUI, lit config JSON, écrit `.db`. | ✅ |
 | `species_registry.py` | `SpeciesRegistry` — spawn/comptage/extinction, pré-calcul cellules valides. | ✅ |
@@ -80,6 +81,7 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 | `recording/manifest.py` | `build_manifest()` — métadonnées d'expérience (seed, git hash, etc.). | ✅ |
 | `recording/migrations.py` | Versioning SQLite v1→v3, appelé automatiquement. | ✅ infra |
 | `utils/counting.py` | `count_by_species()` — dict `{name → count}`. | ✅ |
+| `maintenance.py` | `purge_runs(keep=N)` — supprime les vieux `.db`. | ✅ |
 
 ---
 
@@ -97,21 +99,13 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 
 ---
 
-## `gui/` — interface Tkinter (héritée, option `--tk`)
+## `research/` — outils hors runtime (post-hoc + sweeps)
 
-| Fichier | Rôle | Statut |
-|---|---|---|
-| `app.py` | `EcoSimApp` — fenêtre principale (state machine setup→run→replay). | ✅ |
-| `viewer.py` | `SimViewer` — rendu live PIL + HUD (pop, vitesse, temps). | ✅ |
-| `terrain_editor.py` | Éditeur de terrain interactif. | ✅ |
-| `species_editor.py` | Éditeur d'espèces (JSON ↔ formulaire). | ✅ |
-| `frames/setup_frame.py` | Frame pré-run (grille/espèces/terrain). | ✅ |
-| `frames/run_frame.py` | Frame simulation : `EngineRunner` + `SimViewer`. | ✅ |
-| `frames/replay_frame.py` | Frame replay : `ReplayReader` + scrubbing timeline. | ✅ |
+Tout ce qui se trouve sous `research/` est destiné aux notebooks et scripts
+de recherche — jamais importé par le moteur, le web ou le mode headless.
+Voir `research/README.md` pour les exemples.
 
----
-
-## `analysis/` — métriques scientifiques post-hoc
+### `research/analysis/`
 
 | Fichier | Rôle | Statut |
 |---|---|---|
@@ -120,15 +114,11 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 | `epidemiology.py` | `compute_R0()` empirique depuis un `.db`. | 🧪 hors runtime |
 | `export.py` | CSV/Parquet (populations, life history, génétique, events, spatial). | 🧪 hors runtime |
 
-> Ces modules ne sont jamais importés par le runtime — ils sont destinés aux notebooks/scripts de recherche.
-
----
-
-## `batch/` — sweeps de paramètres
+### `research/batch/`
 
 | Fichier | Rôle | Statut |
 |---|---|---|
-| `sweep.py` | `ParameterSweep` — N simulations × M réplicats, agrégation CSV. | 🧪 jamais importé |
+| `sweep.py` | `ParameterSweep` — N simulations × M réplicats, agrégation CSV. | 🧪 hors runtime |
 
 ---
 
@@ -166,7 +156,7 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 | Fichier | Couverture |
 |---|---|
 | `conftest.py` | Ajoute `ecosim_code/simulation/` à `sys.path`. |
-| `helpers.py` | Fixtures partagées (grille, engine sans tkinter). |
+| `helpers.py` | Fixtures partagées (grille, engine headless). |
 | `test_animal.py` | Comportements `Individual` (mouvement, alimentation, mort). |
 | `test_plant.py` | Croissance, dispersion, mort des plantes. |
 | `test_species.py` | Chargement JSON, `sample_params()`. |
