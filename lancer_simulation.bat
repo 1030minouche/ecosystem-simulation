@@ -7,7 +7,7 @@ echo.
 
 cd /d "%~dp0"
 
-echo Installation des dependances (si necessaire)...
+echo Installation du paquet (si necessaire)...
 pip install -e . >NUL 2>&1
 echo.
 
@@ -17,7 +17,6 @@ echo   (Fermez cette fenetre pour arreter la simulation)
 echo ============================================================
 echo.
 
-cd /d "%~dp0ecosim_code\simulation"
-python main.py
+ecosim
 
 pause

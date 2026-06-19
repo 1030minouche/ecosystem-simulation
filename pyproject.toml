@@ -37,16 +37,33 @@ dev = [
     "ruff>=0.5",
 ]
 
-# NOTE packaging : la base de code vit dans `ecosim_code/simulation/` et utilise
-# des imports relatifs à ce dossier (`from world.grid import ...`). Elle n'est
-# donc pas exposée comme un paquet Python importable nommé `ecosim`. Aucun
-# entry-point script n'est défini ici tant que la structure n'est pas
-# refactorée en paquet propre. Les commandes de lancement restent celles
-# documentées dans le README (depuis `ecosim_code/simulation/`).
+[project.scripts]
+ecosim = "ecosim.main:main"
 
 [tool.setuptools]
-# Pas de paquet à découvrir tant que la ré-architecture n'est pas faite.
-py-modules = []
+packages = [
+    "ecosim",
+    "ecosim.config",
+    "ecosim.engine",
+    "ecosim.engine.recording",
+    "ecosim.engine.utils",
+    "ecosim.entities",
+    "ecosim.monitoring",
+    "ecosim.research",
+    "ecosim.research.analysis",
+    "ecosim.research.batch",
+    "ecosim.web",
+    "ecosim.world",
+]
+
+[tool.setuptools.package-data]
+"ecosim" = [
+    "data/species/*.json",
+    "data/diseases/*.json",
+    "web/static/*",
+    "web/static/css/*",
+    "web/static/js/*",
+]
 
 [tool.ruff]
 line-length = 100
@@ -57,5 +74,5 @@ select = ["E", "F", "W", "I", "UP", "B"]
 ignore = ["E501"]
 
 [tool.pytest.ini_options]
-testpaths = ["ecosim_code/simulation/tests"]
+testpaths = ["tests"]
 python_files = "test_*.py"

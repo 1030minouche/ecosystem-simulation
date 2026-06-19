@@ -12,8 +12,8 @@ EcoSim est un simulateur d'écosystème multi-espèces individu-centré (agent-b
 - **Terrain procédural** généré par bruit de Perlin (altitude, humidité, biomes).
 - **Enregistrement SQLite** avec replay et resume d'une simulation.
 - **Sweep batch** pour balayer des plages de paramètres.
-- **Métriques scientifiques** : Fst, hétérozygotie attendue (He), diversité nucléotidique (pi), R0.
-- **153 tests pytest**.
+- **Métriques scientifiques** : Fst, hétérozygotie attendue (He), diversité nucléotidique (π), R₀.
+- **188 tests pytest**.
 
 ## Installation
 
@@ -23,20 +23,22 @@ cd <repo>
 pip install -e .
 ```
 
-Cette commande installe les dépendances bornées déclarées dans `pyproject.toml`.
+EcoSim est désormais un paquet Python propre — `pip install -e .` expose un module importable `ecosim` et installe l'entry-point CLI `ecosim`. Pour le développement, ajoute `[dev]` :
 
-> ⚠️ La base de code vit sous `ecosim_code/simulation/` et utilise des imports relatifs à ce dossier (`from world.grid import …`). Elle n'est pas encore exposée comme un paquet importable nommé `ecosim` ; les commandes de lancement ci-dessous doivent donc être exécutées depuis ce répertoire. Le `pyproject.toml` à la racine sert à figer les dépendances, fournir la configuration `pytest` et `ruff`, et préparer une future ré-architecture en paquet propre.
+```bash
+pip install -e ".[dev]"   # installe aussi pytest et ruff
+```
 
 Prérequis : Python 3.10 ou plus récent.
 
 ## Comment lancer
 
-Toutes les commandes ci-dessous sont à exécuter depuis `ecosim_code/simulation/`.
+Toutes les commandes ci-dessous fonctionnent depuis n'importe quel répertoire après installation. Les répertoires `runs/`, `logs/` et `reports/` sont créés dans le dossier courant.
 
 - **Interface web (par défaut)** :
 
   ```bash
-  python main.py
+  ecosim
   ```
 
   Démarre un serveur local sur `http://localhost:9000` (port modifiable via `--port 8765`).
@@ -44,48 +46,56 @@ Toutes les commandes ci-dessous sont à exécuter depuis `ecosim_code/simulation
 - **Mode headless / CLI** :
 
   ```bash
-  python main.py --headless --seed 42 --ticks 10000
+  ecosim --headless --seed 42 --ticks 10000
   ```
 
-  Flags disponibles : `--ticks N`, `--seed S`, `--config <dossier>`, `--out <chemin.sqlite>`, `--progress`.
+  Flags : `--ticks N`, `--seed S`, `--config <dossier>`, `--out <chemin.sqlite>`, `--progress`, `--time-acceleration N`.
 
 - **Purger d'anciens runs** :
 
   ```bash
-  python main.py --purge-runs --keep 5
+  ecosim --purge-runs --keep 5
   ```
+
+- **Alternative sans entry-point** : `python -m ecosim ...` fonctionne aussi.
 
 - **Tests** :
 
   ```bash
-  cd ecosim_code/simulation
   python -m pytest
   ```
 
 ## Structure du dépôt
 
 ```
-ecosim_code/simulation/
-├── main.py        point d'entrée CLI
-├── entities/      agents : animal, plant, genetics, disease, …
-├── world/         grid, spatial_grid, terrain (Perlin)
-├── engine/        moteur : engine, runner, headless, recording (SQLite)
-├── research/      outils hors runtime (post-hoc + sweeps batch)
-│   ├── analysis/    stats, génétique (Fst/He/π), épidémiologie (R₀)
-│   └── batch/       sweep de paramètres
-├── monitoring/    logger, death_log, report
-├── web/           serveur aiohttp + renderer + SPA JS (interface unique)
-├── config/        defaults + validator
-├── docs/          ODD_protocol.md, parameters.md, INDEX.md
-└── tests/         153 tests pytest
+<root>/
+├── ecosim/                    paquet importable
+│   ├── main.py                CLI dispatcher (ecosim:main)
+│   ├── entities/              agents : animal, plant, genetics, disease, …
+│   ├── world/                 grid, spatial_grid, terrain (Perlin)
+│   ├── engine/                moteur : engine, runner, headless, recording (SQLite)
+│   ├── research/              outils hors runtime (post-hoc + sweeps batch)
+│   │   ├── analysis/            stats, génétique (Fst/He/π), épidémiologie (R₀)
+│   │   └── batch/               sweep de paramètres
+│   ├── monitoring/            logger, death_log, report
+│   ├── web/                   serveur aiohttp + renderer + SPA JS
+│   ├── config/                defaults + validator
+│   └── data/                  ressources livrées avec le paquet
+│       ├── species/             12 fichiers JSON (espèces calibrées)
+│       └── diseases/            JSON SEIR (myxomatosis, mange)
+├── tests/                     188 tests pytest
+├── docs/                      ODD_protocol.md, parameters.md, INDEX.md
+├── pyproject.toml
+├── README.md
+└── LICENSE
 ```
 
-> 📄 [`docs/INDEX.md`](ecosim_code/simulation/docs/INDEX.md) — cartographie exhaustive de chaque fichier et de son rôle.
+> 📄 [`docs/INDEX.md`](docs/INDEX.md) — cartographie exhaustive de chaque fichier et de son rôle.
 
 ## Documentation scientifique
 
-- Protocole ODD (Overview, Design concepts, Details) à la Grimm 2006/2020 : [`ecosim_code/simulation/docs/ODD_protocol.md`](ecosim_code/simulation/docs/ODD_protocol.md).
-- Référence des paramètres : [`ecosim_code/simulation/docs/parameters.md`](ecosim_code/simulation/docs/parameters.md).
+- Protocole ODD (Overview, Design concepts, Details) à la Grimm 2006/2020 : [`docs/ODD_protocol.md`](docs/ODD_protocol.md).
+- Référence des paramètres : [`docs/parameters.md`](docs/parameters.md).
 
 ## Version
 
