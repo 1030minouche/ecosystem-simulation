@@ -39,10 +39,12 @@ class Individual(MovementMixin, FeedingMixin, ReproductionMixin, Entity):
     explore_x: float = -1.0
     explore_y: float = -1.0
 
-    # Gestation : ticks restants avant la naissance + nombre de petits attendus
+    # Gestation : ticks restants avant la naissance + nombre de petits attendus.
+    # Le baby hérite du Species partagé (immuable) ; aucune Species ad-hoc
+    # n'est plus créée à la fécondation depuis la suppression de blend_species
+    # (la variation phénotypique passe par le Genome).
     gestation_timer: int = 0
     gestation_count: int = 0
-    gestation_species: object = None  # Species pré-calculé au moment de la fécondation
 
     # Territoire natal (-1 = non défini)
     home_x: float = -1.0

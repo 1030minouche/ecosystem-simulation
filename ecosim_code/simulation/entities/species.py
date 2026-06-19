@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from dataclasses import fields as dc_fields
 from enum import Enum
 
 from entities.rng import rng
@@ -12,7 +11,10 @@ class SpeciesType(str, Enum):
     OMNIVORE   = "omnivore"
     FLYING     = "volant"
 
-# Paramètres dont la valeur est tirée selon N(µ, σ) au démarrage de chaque simulation
+# Paramètres dont la valeur est tirée selon N(µ, σ) **une seule fois** au démarrage
+# de la simulation par `sample_params()`. Au-delà, une `Species` est un type partagé
+# immuable : toute variation entre individus passe par le `Genome` (voir
+# entities/genetics.py et Individual._refresh_effective_params).
 _VARIABLE_FLOAT = {
     "reproduction_rate", "energy_start", "energy_consumption", "energy_from_food",
     "speed", "perception_radius", "growth_rate", "juvenile_mortality_rate", "fear_factor",
@@ -160,31 +162,3 @@ class Species:
     carrying_capacity_mode: str = "hard"    # "hard" = plafond dur | "emergent" = émergent
 
 
-# Cache des champs du dataclass Species — calculé une seule fois au chargement du module.
-# Évite d'appeler dc_fields() (introspection) à chaque naissance dans blend_species.
-_SPECIES_FIELDS = dc_fields(Species)
-
-
-def blend_species(s1: "Species", s2: "Species", mutation_rate: float = 0.0) -> "Species":
-    """Crée un Species dont les params variables sont la moyenne de s1 et s2,
-    puis applique une petite perturbation gaussienne selon mutation_rate
-    (écart-type = mutation_rate × valeur moyenne, 0 = pas de mutation).
-    Les params non-variables (conditions, couleur, etc.) sont hérités de s1.
-    """
-    kwargs = {}
-    for f in _SPECIES_FIELDS:
-        v1 = getattr(s1, f.name)
-        v2 = getattr(s2, f.name)
-        if f.name in _VARIABLE_FLOAT:
-            mean = (v1 + v2) / 2.0
-            if mutation_rate > 0:
-                mean = max(0.0, rng.gauss(mean, abs(mean) * mutation_rate))
-            kwargs[f.name] = mean
-        elif f.name in _VARIABLE_INT:
-            mean = (v1 + v2) / 2.0
-            if mutation_rate > 0:
-                mean = max(0.0, rng.gauss(mean, abs(mean) * mutation_rate))
-            kwargs[f.name] = max(0, round(mean))
-        else:
-            kwargs[f.name] = v1
-    return Species(**kwargs)
