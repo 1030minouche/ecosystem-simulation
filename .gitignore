@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 *.pyo
+*.egg-info/
+build/
+dist/
 
 # ── Caches d'outils ───────────────────────────────────────────────────────────
 .pytest_cache/
@@ -22,5 +25,5 @@ runs/
 .vscode/
 
 # ── Audits internes (gardés en local mais hors git) ───────────────────────────
-COMPTE_RENDU_ANALYSE.md
+ecosim_code/simulation/docs/internal/
 ecosim_code/TODO.txt

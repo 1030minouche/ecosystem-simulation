@@ -26,7 +26,7 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 
 | Fichier | Rôle | Statut |
 |---|---|---|
-| `main.py` | Point d'entrée CLI : route vers `--headless`, `--tk`, ou serveur web (par défaut). | ✅ |
+| `main.py` | Point d'entrée CLI : route vers `--headless`, `--purge-runs`, ou serveur web (par défaut). | ✅ |
 | `version.py` | `__version__ = "0.5.0"` — lu par `engine/recording/manifest.py` et `recorder.py`. | ✅ |
 
 ---
@@ -80,6 +80,7 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 | `recording/manifest.py` | `build_manifest()` — métadonnées d'expérience (seed, git hash, etc.). | ✅ |
 | `recording/migrations.py` | Versioning SQLite v1→v3, appelé automatiquement. | ✅ infra |
 | `utils/counting.py` | `count_by_species()` — dict `{name → count}`. | ✅ |
+| `maintenance.py` | `purge_runs(keep=N)` — supprime les vieux `.db`. | ✅ |
 
 ---
 
@@ -94,20 +95,6 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 | `static/css/style.css` | Dark theme, variables CSS, glassmorphism. | ✅ |
 | `static/js/app.js` | Vanilla JS : state machine + Canvas 2D renderer. | ✅ |
 | `static/js/dashboard.js` | Graphes Chart.js (populations, génétique, épidémies). | ✅ |
-
----
-
-## `gui/` — interface Tkinter (héritée, option `--tk`)
-
-| Fichier | Rôle | Statut |
-|---|---|---|
-| `app.py` | `EcoSimApp` — fenêtre principale (state machine setup→run→replay). | ✅ |
-| `viewer.py` | `SimViewer` — rendu live PIL + HUD (pop, vitesse, temps). | ✅ |
-| `terrain_editor.py` | Éditeur de terrain interactif. | ✅ |
-| `species_editor.py` | Éditeur d'espèces (JSON ↔ formulaire). | ✅ |
-| `frames/setup_frame.py` | Frame pré-run (grille/espèces/terrain). | ✅ |
-| `frames/run_frame.py` | Frame simulation : `EngineRunner` + `SimViewer`. | ✅ |
-| `frames/replay_frame.py` | Frame replay : `ReplayReader` + scrubbing timeline. | ✅ |
 
 ---
 
@@ -166,7 +153,7 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 | Fichier | Couverture |
 |---|---|
 | `conftest.py` | Ajoute `ecosim_code/simulation/` à `sys.path`. |
-| `helpers.py` | Fixtures partagées (grille, engine sans tkinter). |
+| `helpers.py` | Fixtures partagées (grille, engine headless). |
 | `test_animal.py` | Comportements `Individual` (mouvement, alimentation, mort). |
 | `test_plant.py` | Croissance, dispersion, mort des plantes. |
 | `test_species.py` | Chargement JSON, `sample_params()`. |
