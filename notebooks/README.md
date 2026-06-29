@@ -22,6 +22,7 @@ jupyter lab notebooks/
 | Notebook                       | Phénomène illustré                                |
 |--------------------------------|---------------------------------------------------|
 | `01_lotka_volterra.ipynb`      | Cycle proie–prédateur (Herbe → Lapin → Renard)    |
+| `02_drift_fst.ipynb`           | Dérive génétique He(t) sur N réplicats + Fst entre quadrants |
 
 ## Convention
 
