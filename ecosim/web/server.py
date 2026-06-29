@@ -23,6 +23,7 @@ import numpy as np
 from aiohttp import web
 
 from ecosim.web.routes_analyse import read_timeseries, register_analyse_routes
+from ecosim.web.routes_sim import register_sim_routes
 
 logger = logging.getLogger(__name__)
 
@@ -46,55 +47,19 @@ _cache_lock = threading.Lock()
 
 
 # ── Helpers synchrones (pool threads) ─────────────────────────────────────────
+# `_load_species_colors` et `_render_terrain_arr` vivent désormais dans
+# `routes_sim.py` (extraction). On les ré-expose ici pour la rétro-compat
+# (le code module-level + le fallback de re-rendu en dépendent).
 
 def _load_species_colors() -> dict[str, tuple[int, int, int]]:
-    global _species_colors
-    with _cache_lock:
-        if _species_colors is not None:
-            return _species_colors
-    colors: dict[str, tuple] = {}
-    for p in sorted(_SPECIES_D.glob("*.json")):
-        with open(p, encoding="utf-8") as f:
-            data = json.load(f)
-        name = data["params"]["name"]
-        r, g, b = [int(c * 255) for c in data["params"]["color"]]
-        colors[name] = (r, g, b)
-    with _cache_lock:
-        _species_colors = colors
-    return colors
+    from ecosim.web.routes_sim import _load_species_colors as _impl
+    return _impl()
 
 
 def _render_terrain_arr(db_or_seed, preset: str, world_size: int,
                          out_w: int, out_h: int) -> np.ndarray:
-    """Génère un ndarray H×W×3 uint8 pour le terrain.
-    db_or_seed : int (seed direct) ou str (chemin .db pour lire les méta).
-    """
-    from PIL import Image
-
-    from ecosim.world.grid import Grid
-    from ecosim.world.terrain import BIOME_PALETTE, generate_terrain
-
-    if isinstance(db_or_seed, str):
-        from ecosim.engine.recording.replay import ReplayReader
-        reader  = ReplayReader(Path(db_or_seed))
-        m       = reader.meta
-        world_size = int(m.get("world_width", 500))
-        seed    = int(m.get("seed", 42))
-        preset  = m.get("terrain_preset", "default")
-        reader.close()
-    else:
-        seed = db_or_seed
-
-    grid = Grid(width=world_size, height=world_size)
-    generate_terrain(grid, seed=seed, preset=preset)
-
-    alt = np.array(grid.altitude)
-    rgb = np.zeros((world_size, world_size, 3), dtype=np.uint8)
-    for threshold, color in BIOME_PALETTE:
-        rgb[alt >= threshold] = color
-
-    img = Image.fromarray(rgb, "RGB").resize((out_w, out_h), Image.NEAREST)
-    return np.asarray(img, dtype=np.uint8).copy()
+    from ecosim.web.routes_sim import _render_terrain_arr as _impl
+    return _impl(db_or_seed, preset, world_size, out_w, out_h)
 
 
 def _get_terrain_arr(db: str, out_w: int, out_h: int) -> np.ndarray:
@@ -223,16 +188,6 @@ def _quick_meta(db_path: str, key: str) -> str:
         return ""
 
 
-def _render_preview_png(seed: int, preset: str,
-                         grid_size: int, out_w: int, out_h: int) -> bytes:
-    """Preview terrain : utilise grid_size exact de la simulation → aperçu fidèle."""
-    from PIL import Image
-    arr = _render_terrain_arr(seed, preset, grid_size, out_w, out_h)
-    buf = io.BytesIO()
-    Image.fromarray(arr, "RGB").save(buf, format="PNG", optimize=False)
-    return buf.getvalue()
-
-
 # ── Static ────────────────────────────────────────────────────────────────────
 
 async def handle_index(request):
@@ -247,58 +202,10 @@ async def handle_static(request):
 
 
 # ── API endpoints ─────────────────────────────────────────────────────────────
-
-async def api_species(request):
-    colors = _load_species_colors()
-    items  = []
-    for p in sorted(_SPECIES_D.glob("*.json")):
-        with open(p, encoding="utf-8") as f:
-            data = json.load(f)
-        params = data["params"]
-        name   = params["name"]
-        r, g, b = colors.get(name, (128, 128, 128))
-        items.append({
-            "file":          p.stem,
-            "name":          name,
-            "color":         f"#{r:02x}{g:02x}{b:02x}",
-            "count_default": data["count"],
-            "params":        params,
-        })
-    return web.json_response(items)
-
-
-async def api_terrain_preview(request):
-    body      = await request.json()
-    seed      = int(body.get("seed",      42))
-    preset    = body.get("preset",        "default")
-    out_size  = min(int(body.get("size",  260)), 400)
-    grid_size = int(body.get("grid_size", 500))
-
-    loop = asyncio.get_event_loop()
-    png  = await loop.run_in_executor(
-        None, _render_preview_png, seed, preset, grid_size, out_size, out_size
-    )
-    return web.Response(body=png, content_type="image/png",
-                        headers={"Cache-Control": "no-store"})
-
-
-async def api_diseases(request):
-    """GET /api/diseases — liste toutes les maladies disponibles."""
-    diseases = []
-    if _DISEASES_D.exists():
-        for p in sorted(_DISEASES_D.glob("*.json")):
-            try:
-                d = json.loads(p.read_text(encoding="utf-8"))
-                diseases.append({
-                    "file": p.stem,
-                    "name": d.get("name", p.stem),
-                    "transmission_rate": d.get("transmission_rate", 0),
-                    "mortality_chance":  d.get("mortality_chance", 0),
-                    "infectious_ticks":  d.get("infectious_ticks", 0),
-                })
-            except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-                logger.debug("swallowed: %s (%s)", exc, p)
-    return web.json_response(diseases)
+# /api/species, /api/diseases, /api/terrain/preview, /api/sim/start et
+# /api/sim/cancel vivent maintenant dans `web/routes_sim.py`. Le reste
+# (replay, runs, export, websocket) reste ici en attendant la suite du
+# découpage planifié dans TODO.txt.
 
 
 async def api_replay_infect(request):
@@ -353,26 +260,6 @@ async def api_replay_infect(request):
     }
     ok = _mgr.start(config)
     return web.json_response({"ok": ok, "already_running": not ok, "n_targets": len(targets)})
-
-
-async def api_sim_start(request):
-    config  = await request.json()
-    db_path = config.get("out_path", "runs/sim.db")
-    # Invalider le cache mémoire pour ce chemin avant toute nouvelle simulation
-    with _cache_lock:
-        for key in list(_frame_cache.keys()):
-            if key[0] == db_path:
-                del _frame_cache[key]
-        for key in list(_terrain_cache.keys()):
-            if key[0] == db_path:
-                del _terrain_cache[key]
-    ok = _mgr.start(config)
-    return web.json_response({"ok": ok, "already_running": not ok})
-
-
-async def api_sim_cancel(request):
-    _mgr.cancel()
-    return web.json_response({"ok": True})
 
 
 def _enrich_run_meta(p) -> dict:
@@ -607,11 +494,8 @@ def _build_app() -> web.Application:
     app = web.Application()
     app.router.add_get ("/",                        handle_index)
     app.router.add_get ("/static/{path:.*}",        handle_static)
-    app.router.add_get ("/api/species",             api_species)
-    app.router.add_get ("/api/diseases",            api_diseases)
-    app.router.add_post("/api/terrain/preview",     api_terrain_preview)
-    app.router.add_post("/api/sim/start",           api_sim_start)
-    app.router.add_post("/api/sim/cancel",          api_sim_cancel)
+    register_sim_routes(app)         # /api/species, /api/diseases,
+                                      # /api/terrain/preview, /api/sim/{start,cancel}
     app.router.add_post("/api/replay/infect",       api_replay_infect)
     app.router.add_get ("/api/runs",                api_runs)
     app.router.add_get ("/api/replay/meta",         api_replay_meta)
