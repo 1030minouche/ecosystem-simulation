@@ -3,6 +3,33 @@
 Format basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) ; ce projet suit
 le [versionnement sémantique](https://semver.org/lang/fr/) à partir de la 0.4.
 
+## [0.7.0] — 2026-06-29
+
+Vectorisation hot path (étape 2), 2ᵉ notebook scientifique, suite du
+découpage du serveur web, couverture `sim_manager`.
+
+### Ajouté
+- **`SpatialGrid` vectorisé** (`ecosim/world/spatial_grid.py`) — stocke
+  désormais des triplets `(x, y, idx)` ; `query` et `query_radius`
+  renvoient `np.ndarray[int32]` d'indices. `engine.tick` matérialise les
+  indices → entités via les listes de vérité. Déterminisme préservé. 6
+  tests d'invariant (`tests/test_spatial_grid.py`).
+- **Notebook `02_drift_fst.ipynb`** — dérive génétique He(t) sur 5
+  réplicats (bande mean ± σ) + Fst entre quadrants spatiaux d'une
+  simulation, basé sur `ecosim.research.analysis.genetics_metrics`.
+- **`ecosim/web/routes_runs.py`** — extrait de `server.py` :
+  `/api/runs`, `/api/runs/{id}/tag`, `/api/runs/compare`,
+  `/api/runs/{id}/export` + helpers `_enrich_run_meta`, `_compare_runs`,
+  `_export_csv`.
+- **Tests `web/sim_manager.py`** — 11 tests (clients WS, `_push` 1/N/0
+  clients, cycle start/cancel/is_running, smoke E2E de simulation +
+  annulation).
+
+### Modifié
+- **`web/server.py`** : 533 → 404 lignes (-24 %) après extraction de
+  `routes_runs.py`. Reste un cycle de découpage (`routes_replay.py`)
+  pour atteindre la cible <200 lignes.
+
 ## [0.6.0] — 2026-06-29
 
 ### Ajouté
@@ -132,6 +159,7 @@ Première réorganisation : architecture en façade, headless/recorder/replay.
   µ et un écart-type σ (clés `*_std` dans les JSON), tiré au démarrage par
   `sample_params`.
 
+[0.7.0]: https://example.invalid/ecosim/compare/v0.6.0...v0.7.0
 [0.6.0]: https://example.invalid/ecosim/compare/v0.5.0...v0.6.0
 [0.5.0]: https://example.invalid/ecosim/compare/v0.4.0...v0.5.0
 [0.4.0]: https://example.invalid/ecosim/compare/v0.3.0...v0.4.0

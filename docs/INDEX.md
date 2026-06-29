@@ -27,7 +27,7 @@ Pour chaque fichier : rôle en une ligne + statut (✅ vivant / 🧪 expériment
 | `__init__.py` | Expose `__version__`. | ✅ |
 | `__main__.py` | Active `python -m ecosim`. | ✅ |
 | `main.py` | CLI : `main()` dispatcher → `--headless`, `--purge-runs` ou serveur web. Entry-point `ecosim`. | ✅ |
-| `version.py` | `__version__ = "0.6.0"` — source de vérité. | ✅ |
+| `version.py` | `__version__ = "0.7.0"` — source de vérité. | ✅ |
 
 ---
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ecosim"
-version = "0.6.0"
+version = "0.7.0"
 description = "Simulateur d'écosystème multi-espèces individu-centré (agent-based) en Python."
 readme = "README.md"
 requires-python = ">=3.10"
