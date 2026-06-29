@@ -224,12 +224,15 @@ class SimulationEngine:
         # cell_size fixée dans __init__ — ne pas recalculer chaque tick.
         self._ind_grid.clear()
         self._plant_grid.clear()
-        for ind in self.individuals:
-            self._ind_grid.insert(ind)
-        for plant in self.plants:
-            self._plant_grid.insert(plant)
+        for i, ind in enumerate(self.individuals):
+            self._ind_grid.insert(ind.x, ind.y, i)
+        for j, plant in enumerate(self.plants):
+            self._plant_grid.insert(plant.x, plant.y, j)
         ind_grid   = self._ind_grid
         plant_grid = self._plant_grid
+        # Listes locales hoistées pour matérialiser les indices → entités.
+        inds_list   = self.individuals
+        plants_list = self.plants
 
         # ── Animaux ──────────────────────────────────────────────────────────
         # Le centroïde de troupeau est calculé localement (voisins dans r_repro)
@@ -243,12 +246,14 @@ class SimulationEngine:
         for ind in self.individuals:
             _sp    = ind.species
             r_perc = _sp.perception_radius
-            nearby_inds = ind_grid.query(ind.x, ind.y, r_perc)
+            nearby_inds_idx = ind_grid.query(ind.x, ind.y, r_perc)
+            nearby_inds     = [inds_list[k] for k in nearby_inds_idx]
             # Carnivores stricts (loup…) n'interrogent pas la grille des plantes
-            nearby_plants = (
-                plant_grid.query(ind.x, ind.y, r_perc)
-                if _sp.can_eat_plants() else []
-            )
+            if _sp.can_eat_plants():
+                nearby_plants_idx = plant_grid.query(ind.x, ind.y, r_perc)
+                nearby_plants     = [plants_list[k] for k in nearby_plants_idx]
+            else:
+                nearby_plants = []
 
             # Requête large (rayon 3×) uniquement si l'animal est éligible
             # à se reproduire ce tick — évite ~70 % des requêtes larges.
@@ -259,10 +264,11 @@ class SimulationEngine:
                 and (_sp.sexual_maturity_ticks == 0
                      or ind.age >= _sp.sexual_maturity_ticks)
             )
-            nearby_repro = (
-                ind_grid.query(ind.x, ind.y, r_perc * 3.0)
-                if _can_repro else nearby_inds
-            )
+            if _can_repro:
+                nearby_repro_idx = ind_grid.query(ind.x, ind.y, r_perc * 3.0)
+                nearby_repro     = [inds_list[k] for k in nearby_repro_idx]
+            else:
+                nearby_repro = nearby_inds
 
             # Centroïde depuis nearby_inds (r_perc déjà calculé) — élimine
             # la 3e requête spatiale pour les espèces à herd_cohesion > 0.
@@ -358,12 +364,14 @@ class SimulationEngine:
         infectious = [i for i in self.individuals if i.alive and i.is_infectious]
         if not infectious:
             return
+        inds_list = self.individuals
         for source in infectious:
             for spec in DISEASE_REGISTRY.values():
-                neighbors = self._ind_grid.query_radius(
+                neighbors_idx = self._ind_grid.query_radius(
                     source.x, source.y, spec.transmission_radius
                 )
-                for target in neighbors:
+                for k in neighbors_idx:
+                    target = inds_list[k]
                     if target is not source and target.alive:
                         if try_infect(source, target, spec):
                             self._last_disease_events.append({
