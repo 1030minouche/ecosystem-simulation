@@ -99,7 +99,7 @@ Toutes les commandes ci-dessous fonctionnent depuis n'importe quel répertoire a
 
 ## Version
 
-0.5.0
+0.6.0 — voir [`CHANGELOG.md`](CHANGELOG.md) pour l'historique complet.
 
 ## Licence
 
